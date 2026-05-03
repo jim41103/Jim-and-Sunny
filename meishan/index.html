@@ -300,8 +300,9 @@
     .color-opt { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; transition: all .15s; }
     .color-circle { width: 26px; height: 26px; border-radius: 50%; border: 3px solid transparent; transition: all .15s; }
     .color-opt.sel .color-circle { border-color: var(--text); transform: scale(1.12); }
-    .color-label { font-size: 10px; color: var(--muted); font-weight: 500; }
-    .color-opt.sel .color-label { color: var(--text); font-weight: 700; }
+    .color-label-input { font-size: 10px; color: var(--muted); font-weight: 500; border: none; outline: none; background: transparent; width: 34px; text-align: center; cursor: text; padding: 0; font-family: 'Noto Sans TC', sans-serif; }
+    .color-label-input:focus { color: var(--text); border-bottom: 1px solid var(--accent); }
+    .color-opt.sel .color-label-input { color: var(--text); font-weight: 700; }
     .converted-time { background: var(--bg); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 9px 13px; font-size: 14px; color: var(--primary); font-weight: 600; min-height: 40px; display: flex; align-items: center; }
     .photo-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     .photo-thumb { position: relative; display: inline-block; }
@@ -524,12 +525,12 @@
       <div class="form-group">
         <label class="form-label">顏色標籤</label>
         <div class="color-picker" id="colorPicker">
-          <div class="color-opt" data-color="#4a90e2" onclick="pickColor(this)"><div class="color-circle" style="background:#4a90e2"></div><span class="color-label">藍色</span></div>
-          <div class="color-opt sel" data-color="#4d9fd6" onclick="pickColor(this)"><div class="color-circle" style="background:#4d9fd6"></div><span class="color-label">天空</span></div>
-          <div class="color-opt" data-color="#52c789" onclick="pickColor(this)"><div class="color-circle" style="background:#52c789"></div><span class="color-label">綠色</span></div>
-          <div class="color-opt" data-color="#f6ad55" onclick="pickColor(this)"><div class="color-circle" style="background:#f6ad55"></div><span class="color-label">橙色</span></div>
-          <div class="color-opt" data-color="#9f7aea" onclick="pickColor(this)"><div class="color-circle" style="background:#9f7aea"></div><span class="color-label">紫色</span></div>
-          <div class="color-opt" data-color="#fc8181" onclick="pickColor(this)"><div class="color-circle" style="background:#fc8181"></div><span class="color-label">紅色</span></div>
+          <div class="color-opt" data-color="#4a90e2" onclick="pickColor(this)"><div class="color-circle" style="background:#4a90e2"></div><input class="color-label-input" data-color="#4a90e2" value="藍色" onclick="event.stopPropagation()" onblur="saveColorLabel(this)" onkeydown="if(event.key==='Enter')this.blur()"></div>
+          <div class="color-opt sel" data-color="#4d9fd6" onclick="pickColor(this)"><div class="color-circle" style="background:#4d9fd6"></div><input class="color-label-input" data-color="#4d9fd6" value="天空" onclick="event.stopPropagation()" onblur="saveColorLabel(this)" onkeydown="if(event.key==='Enter')this.blur()"></div>
+          <div class="color-opt" data-color="#52c789" onclick="pickColor(this)"><div class="color-circle" style="background:#52c789"></div><input class="color-label-input" data-color="#52c789" value="綠色" onclick="event.stopPropagation()" onblur="saveColorLabel(this)" onkeydown="if(event.key==='Enter')this.blur()"></div>
+          <div class="color-opt" data-color="#f6ad55" onclick="pickColor(this)"><div class="color-circle" style="background:#f6ad55"></div><input class="color-label-input" data-color="#f6ad55" value="橙色" onclick="event.stopPropagation()" onblur="saveColorLabel(this)" onkeydown="if(event.key==='Enter')this.blur()"></div>
+          <div class="color-opt" data-color="#9f7aea" onclick="pickColor(this)"><div class="color-circle" style="background:#9f7aea"></div><input class="color-label-input" data-color="#9f7aea" value="紫色" onclick="event.stopPropagation()" onblur="saveColorLabel(this)" onkeydown="if(event.key==='Enter')this.blur()"></div>
+          <div class="color-opt" data-color="#fc8181" onclick="pickColor(this)"><div class="color-circle" style="background:#fc8181"></div><input class="color-label-input" data-color="#fc8181" value="紅色" onclick="event.stopPropagation()" onblur="saveColorLabel(this)" onkeydown="if(event.key==='Enter')this.blur()"></div>
         </div>
       </div>
     </div>
@@ -626,8 +627,12 @@ function convertTime(dateStr, timeStr, fromTZ, toTZ) {
   const ref = new Date(Date.UTC(y, m-1, d, h, min));
   const fromOff = tzOffsetMin(fromTZ, ref);
   const toOff   = tzOffsetMin(toTZ,   ref);
-  const total = ((h*60 + min - fromOff + toOff) % 1440 + 1440) % 1440;
-  return String(Math.floor(total/60)).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
+  const rawMin  = h*60 + min - fromOff + toOff;
+  const total   = ((rawMin % 1440) + 1440) % 1440;
+  const dayDiff = Math.floor(rawMin / 1440);
+  const t = String(Math.floor(total/60)).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
+  const suffix  = dayDiff > 0 ? ` (+${dayDiff}日)` : dayDiff < 0 ? ` (${dayDiff}日)` : '';
+  return t + suffix;
 }
 function updateConvertedTime() {
   const t = document.getElementById('evTime').value;
@@ -674,6 +679,20 @@ function renderPhotoPreview() {
 function removePhoto(idx) {
   selectedPhotos.splice(idx, 1);
   renderPhotoPreview();
+}
+
+// ── 顏色標籤（存 localStorage）──
+const COLOR_LABEL_KEY = 'colorLabels_meishan';
+function loadColorLabels() {
+  const saved = JSON.parse(localStorage.getItem(COLOR_LABEL_KEY) || '{}');
+  document.querySelectorAll('.color-label-input').forEach(inp => {
+    if (saved[inp.dataset.color]) inp.value = saved[inp.dataset.color];
+  });
+}
+function saveColorLabel(inp) {
+  const saved = JSON.parse(localStorage.getItem(COLOR_LABEL_KEY) || '{}');
+  saved[inp.dataset.color] = inp.value.trim() || inp.value;
+  localStorage.setItem(COLOR_LABEL_KEY, JSON.stringify(saved));
 }
 
 function today() { return new Date().toISOString().split('T')[0]; }
@@ -929,6 +948,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(loadWeather, 10 * 60 * 1000);
   updateClock();
   setInterval(updateClock, 1000);
+  loadColorLabels();
   document.getElementById('ePhotos').addEventListener('change', async (e) => {
     for (const file of Array.from(e.target.files)) {
       selectedPhotos.push(await compressImage(file));

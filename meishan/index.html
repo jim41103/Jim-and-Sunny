@@ -13,16 +13,16 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-      --primary:       #7b3558;
-      --primary-light: #9b4570;
-      --accent:        #e07aa0;
-      --accent-light:  #eca8c0;
-      --bg:            #fff0f5;
+      --primary:       #1a4a72;
+      --primary-light: #2d6a9f;
+      --accent:        #4d9fd6;
+      --accent-light:  #85bfe6;
+      --bg:            #f0f7fc;
       --card:          #ffffff;
-      --text:          #2a1a22;
-      --muted:         #8d6b7a;
-      --border:        #f0dee6;
-      --shadow:        0 4px 18px rgba(123,53,88,0.08);
+      --text:          #1a2a38;
+      --muted:         #5a7a8d;
+      --border:        #d6e8f5;
+      --shadow:        0 4px 18px rgba(26,74,114,0.08);
       --radius:        16px;
       --radius-sm:     10px;
     }
@@ -112,7 +112,7 @@
       display: flex; align-items: center; gap: 5px;
       transition: all .2s;
     }
-    .btn-new:hover { background: var(--primary-light); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(224,122,160,.4); }
+    .btn-new:hover { background: var(--primary-light); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(77,159,214,.4); }
 
     /* ── Diary Cards ── */
     .diary-list { display: flex; flex-direction: column; gap: 11px; }
@@ -126,7 +126,7 @@
       border: 1.5px solid transparent;
       box-shadow: var(--shadow);
     }
-    .diary-card:hover { border-color: var(--accent-light); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(224,122,160,.14); }
+    .diary-card:hover { border-color: var(--accent-light); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(77,159,214,.14); }
 
     .c-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; }
     .c-date {
@@ -180,7 +180,7 @@
     }
     .cal-d:hover:not(.empty) { background: var(--bg); }
     .cal-d.today { background: var(--accent); color: #fff; font-weight: 700; }
-    .cal-d.selected:not(.today) { background: rgba(224,122,160,.14); border: 1.5px solid var(--accent); font-weight: 600; }
+    .cal-d.selected:not(.today) { background: rgba(77,159,214,.14); border: 1.5px solid var(--accent); font-weight: 600; }
     .cal-d.other-month { color: #d4b8c4; }
     .cal-d.empty { cursor: default; }
     .cal-d.has-event::after {
@@ -209,7 +209,7 @@
       color: var(--muted); font-size: 13px; cursor: pointer;
       font-family: 'Noto Sans TC', sans-serif; transition: all .2s;
     }
-    .btn-add-ev:hover { border-color: var(--accent); color: var(--accent); background: rgba(224,122,160,.04); }
+    .btn-add-ev:hover { border-color: var(--accent); color: var(--accent); background: rgba(77,159,214,.04); }
 
     /* ── Weather ── */
     .weather-wrap { display: flex; align-items: center; gap: 14px; }
@@ -225,7 +225,7 @@
       font-family: 'Noto Serif TC', serif;
       font-size: 14px; font-weight: 600; line-height: 1.55;
       padding: 11px 14px;
-      background: linear-gradient(135deg, var(--bg), rgba(224,122,160,.07));
+      background: linear-gradient(135deg, var(--bg), rgba(77,159,214,.07));
       border-radius: var(--radius-sm);
       border-left: 3px solid var(--accent);
       margin-bottom: 13px;
@@ -293,15 +293,26 @@
       transition: all .15s; display: flex; align-items: center; gap: 5px;
     }
     .mood-opt span { font-size: 11px; color: var(--muted); }
-    .mood-opt:hover { background: rgba(224,122,160,.08); border-color: var(--accent-light); }
-    .mood-opt.sel { border-color: var(--accent); background: rgba(224,122,160,.08); }
+    .mood-opt:hover { background: rgba(77,159,214,.08); border-color: var(--accent-light); }
+    .mood-opt.sel { border-color: var(--accent); background: rgba(77,159,214,.08); }
 
-    .color-picker { display: flex; gap: 8px; }
-    .color-opt { width: 26px; height: 26px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; transition: all .15s; }
-    .color-opt.sel { border-color: var(--text); transform: scale(1.12); }
+    .color-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+    .color-opt { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; transition: all .15s; }
+    .color-circle { width: 26px; height: 26px; border-radius: 50%; border: 3px solid transparent; transition: all .15s; }
+    .color-opt.sel .color-circle { border-color: var(--text); transform: scale(1.12); }
+    .color-label { font-size: 10px; color: var(--muted); font-weight: 500; }
+    .color-opt.sel .color-label { color: var(--text); font-weight: 700; }
+    .converted-time { background: var(--bg); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 9px 13px; font-size: 14px; color: var(--primary); font-weight: 600; min-height: 40px; display: flex; align-items: center; }
+    .photo-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .photo-thumb { position: relative; display: inline-block; }
+    .photo-thumb img { width: 76px; height: 76px; object-fit: cover; border-radius: 8px; border: 1.5px solid var(--border); display: block; }
+    .photo-thumb .rm-btn { position: absolute; top: -6px; right: -6px; background: #e53e3e; color: #fff; border: none; border-radius: 50%; width: 18px; height: 18px; cursor: pointer; font-size: 10px; display: flex; align-items: center; justify-content: center; line-height: 1; padding: 0; }
+    .view-photos { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+    .view-photos img { width: 100%; max-width: 240px; border-radius: 10px; cursor: pointer; border: 1.5px solid var(--border); }
+    .clock-pill { background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.24); border-radius: 24px; padding: 5px 14px; font-size: 13px; display: flex; align-items: center; gap: 5px; }
 
     .btn-cancel { background: var(--bg); color: var(--muted); border: none; border-radius: var(--radius-sm); padding: 9px 18px; font-size: 14px; cursor: pointer; font-family: 'Noto Sans TC', sans-serif; transition: all .2s; }
-    .btn-cancel:hover { background: #f5e0e8; }
+    .btn-cancel:hover { background: #ddeef8; }
     .btn-submit { background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); padding: 9px 22px; font-size: 14px; font-family: 'Noto Sans TC', sans-serif; font-weight: 500; cursor: pointer; transition: all .2s; }
     .btn-submit:hover { background: var(--primary-light); }
     .btn-del { background: #fee2e2; color: #e53e3e; border: none; border-radius: var(--radius-sm); padding: 9px 18px; font-size: 14px; cursor: pointer; font-family: 'Noto Sans TC', sans-serif; transition: all .2s; }
@@ -315,7 +326,7 @@
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #c4a0b2; }
+    ::-webkit-scrollbar-thumb:hover { background: #85bfe6; }
 
     @media (max-width: 900px) {
       .main { grid-template-columns: 1fr; }
@@ -327,7 +338,7 @@
 
 <!-- ── Header ── -->
 <header class="header">
-  <div class="h-left">
+  <div class="h-left" style="cursor:pointer" onclick="location.reload()">
     <span style="font-size:23px">☀️</span>
     <span class="h-title">美珊的日記</span>
   </div>
@@ -336,6 +347,7 @@
       <span id="hWeatherIcon">🌤️</span>
       <span id="hWeatherTemp">載入中...</span>
     </div>
+    <div class="clock-pill">🕐 <span id="hClock">--:--</span>&nbsp;斯德哥爾摩</div>
     <a href="../index.html" class="nav-btn">🏠 首頁</a>
     <a href="../wolf/index.html" class="nav-btn">🐺 野狼</a>
   </div>
@@ -347,7 +359,7 @@
   <!-- Left: Diary -->
   <div class="left-col">
     <div class="search-wrap">
-      <span style="font-size:17px;color:#c4a0b2">🔍</span>
+      <span style="font-size:17px;color:#85bfe6">🔍</span>
       <input type="text" id="searchInput" placeholder="搜尋日記標題或內容...">
     </div>
     <div class="toolbar">
@@ -399,7 +411,7 @@
       </div>
       <div class="qa-section">
         <div class="qa-label">🐺 野狼說</div>
-        <div class="qa-partner" id="partnerAnswer"><span style="color:#c4a0b2;font-style:italic">等待野狼回答...</span></div>
+        <div class="qa-partner" id="partnerAnswer"><span style="color:#85bfe6;font-style:italic">等待野狼回答...</span></div>
       </div>
       <button class="btn-save-qa" onclick="saveQA()">儲存回答</button>
     </div>
@@ -440,6 +452,11 @@
         <label class="form-label">內容</label>
         <textarea class="form-textarea" id="eContent" placeholder="寫下今天的故事..."></textarea>
       </div>
+      <div class="form-group">
+        <label class="form-label">插入照片（選填，可多張）</label>
+        <input type="file" id="ePhotos" accept="image/*" multiple class="form-input" style="padding:6px;cursor:pointer">
+        <div class="photo-preview" id="photoPreview"></div>
+      </div>
     </div>
     <div class="m-foot">
       <button class="btn-cancel" onclick="closeModal('entryModal')">取消</button>
@@ -461,6 +478,7 @@
         <span class="ev-mood-badge" id="vMood"></span>
       </div>
       <div class="ev-content" id="vContent"></div>
+      <div class="view-photos" id="vPhotos"></div>
     </div>
     <div class="m-foot">
       <button class="btn-del" onclick="deleteEntry()">刪除</button>
@@ -488,7 +506,16 @@
       </div>
       <div class="form-group">
         <label class="form-label">時間（選填）</label>
-        <input type="time" class="form-input" id="evTime">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end">
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:600">台北時間</div>
+            <input type="time" class="form-input" id="evTime" oninput="updateConvertedTime()" onchange="updateConvertedTime()">
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:600">對應斯德哥爾摩時間</div>
+            <div class="converted-time" id="convertedTime">—</div>
+          </div>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">備注（選填）</label>
@@ -497,12 +524,12 @@
       <div class="form-group">
         <label class="form-label">顏色標籤</label>
         <div class="color-picker" id="colorPicker">
-          <div class="color-opt" data-color="#4a90e2" style="background:#4a90e2" onclick="pickColor(this)"></div>
-          <div class="color-opt sel" data-color="#e07aa0" style="background:#e07aa0" onclick="pickColor(this)"></div>
-          <div class="color-opt" data-color="#52c789" style="background:#52c789" onclick="pickColor(this)"></div>
-          <div class="color-opt" data-color="#f6ad55" style="background:#f6ad55" onclick="pickColor(this)"></div>
-          <div class="color-opt" data-color="#9f7aea" style="background:#9f7aea" onclick="pickColor(this)"></div>
-          <div class="color-opt" data-color="#fc8181" style="background:#fc8181" onclick="pickColor(this)"></div>
+          <div class="color-opt" data-color="#4a90e2" onclick="pickColor(this)"><div class="color-circle" style="background:#4a90e2"></div><span class="color-label">藍色</span></div>
+          <div class="color-opt sel" data-color="#4d9fd6" onclick="pickColor(this)"><div class="color-circle" style="background:#4d9fd6"></div><span class="color-label">天空</span></div>
+          <div class="color-opt" data-color="#52c789" onclick="pickColor(this)"><div class="color-circle" style="background:#52c789"></div><span class="color-label">綠色</span></div>
+          <div class="color-opt" data-color="#f6ad55" onclick="pickColor(this)"><div class="color-circle" style="background:#f6ad55"></div><span class="color-label">橙色</span></div>
+          <div class="color-opt" data-color="#9f7aea" onclick="pickColor(this)"><div class="color-circle" style="background:#9f7aea"></div><span class="color-label">紫色</span></div>
+          <div class="color-opt" data-color="#fc8181" onclick="pickColor(this)"><div class="color-circle" style="background:#fc8181"></div><span class="color-label">紅色</span></div>
         </div>
       </div>
     </div>
@@ -578,8 +605,76 @@ const WX = {
 
 let entries = [], events = [];
 let calY = new Date().getFullYear(), calM = new Date().getMonth();
-let selDate = today(), selMood = '😊', selColor = '#e07aa0';
+let selDate = today(), selMood = '😊', selColor = '#4d9fd6';
 let editId = null, viewId = null;
+let selectedPhotos = [];
+
+// ── 時區工具 ──
+function tzOffsetMin(tz, date) {
+  const fmt = (z) => new Intl.DateTimeFormat('en-US', {
+    timeZone: z, year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false
+  }).format(date).replace(/(\d+)\/(\d+)\/(\d+),\s(\d+):(\d+):(\d+)/, '$3-$1-$2T$4:$5:$6Z');
+  const utcMs = new Date(fmt('UTC')).getTime();
+  const tzMs  = new Date(fmt(tz)).getTime();
+  return Math.round((tzMs - utcMs) / 60000);
+}
+function convertTime(dateStr, timeStr, fromTZ, toTZ) {
+  if (!timeStr || !dateStr) return '—';
+  const [y,m,d] = dateStr.split('-').map(Number);
+  const [h,min] = timeStr.split(':').map(Number);
+  const ref = new Date(Date.UTC(y, m-1, d, h, min));
+  const fromOff = tzOffsetMin(fromTZ, ref);
+  const toOff   = tzOffsetMin(toTZ,   ref);
+  const total = ((h*60 + min - fromOff + toOff) % 1440 + 1440) % 1440;
+  return String(Math.floor(total/60)).padStart(2,'0') + ':' + String(total%60).padStart(2,'0');
+}
+function updateConvertedTime() {
+  const t = document.getElementById('evTime').value;
+  const d = document.getElementById('evDate').value || today();
+  document.getElementById('convertedTime').textContent =
+    t ? convertTime(d, t, 'Asia/Taipei', 'Europe/Stockholm') : '—';
+}
+
+// ── 時鐘（斯德哥爾摩）──
+function updateClock() {
+  document.getElementById('hClock').textContent =
+    new Intl.DateTimeFormat('zh-TW', { timeZone:'Europe/Stockholm', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).format(new Date());
+}
+
+// ── 照片壓縮 ──
+function compressImage(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1100;
+        let w = img.width, h = img.height;
+        if (w > h && w > MAX) { h = Math.round(h*MAX/w); w = MAX; }
+        else if (h > MAX) { w = Math.round(w*MAX/h); h = MAX; }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function renderPhotoPreview() {
+  const el = document.getElementById('photoPreview');
+  el.innerHTML = selectedPhotos.map((src, i) => `
+    <div class="photo-thumb">
+      <img src="${src}">
+      <button class="rm-btn" onclick="removePhoto(${i})">✕</button>
+    </div>`).join('');
+}
+function removePhoto(idx) {
+  selectedPhotos.splice(idx, 1);
+  renderPhotoPreview();
+}
 
 function today() { return new Date().toISOString().split('T')[0]; }
 function fmtDate(s) {
@@ -632,10 +727,13 @@ function renderList(q = '') {
 
 function openNewEntry() {
   editId = null;
+  selectedPhotos = [];
   document.getElementById('entryModalTitle').textContent = '新增日記';
   document.getElementById('eTitle').value = '';
   document.getElementById('eDate').value = today();
   document.getElementById('eContent').value = '';
+  document.getElementById('ePhotos').value = '';
+  document.getElementById('photoPreview').innerHTML = '';
   document.querySelectorAll('.mood-opt').forEach(e => e.classList.remove('sel'));
   document.querySelector('.mood-opt[data-mood="😊"]').classList.add('sel');
   selMood = '😊';
@@ -652,7 +750,7 @@ async function saveEntry() {
   const d = document.getElementById('eDate').value;
   const c = document.getElementById('eContent').value.trim();
   if (!t && !c) { alert('請填寫標題或內容'); return; }
-  const data = { title: t||'無標題', date: d, content: c, mood: selMood, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  const data = { title: t||'無標題', date: d, content: c, mood: selMood, photos: selectedPhotos, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
   try {
     if (editId) { await db.collection(COL).doc(editId).update(data); }
     else { data.createdAt = firebase.firestore.FieldValue.serverTimestamp(); await db.collection(COL).add(data); }
@@ -667,16 +765,23 @@ function viewEntry(id) {
   document.getElementById('vDate').textContent = fmtDate(e.date);
   document.getElementById('vMood').textContent = e.mood||'📔';
   document.getElementById('vContent').textContent = e.content||'';
+  const vp = document.getElementById('vPhotos');
+  vp.innerHTML = (e.photos||[]).map(src =>
+    `<img src="${src}" onclick="window.open('${src}','_blank')" title="點擊放大">`
+  ).join('');
   openModal('viewModal');
 }
 
 function editEntry() {
   const e = entries.find(x => x.id === viewId); if (!e) return;
   editId = viewId; closeModal('viewModal');
+  selectedPhotos = [...(e.photos||[])];
   document.getElementById('entryModalTitle').textContent = '編輯日記';
   document.getElementById('eTitle').value = e.title||'';
   document.getElementById('eDate').value = e.date||'';
   document.getElementById('eContent').value = e.content||'';
+  document.getElementById('ePhotos').value = '';
+  renderPhotoPreview();
   document.querySelectorAll('.mood-opt').forEach(el => el.classList.toggle('sel', el.dataset.mood === e.mood));
   selMood = e.mood||'😊';
   openModal('entryModal');
@@ -726,7 +831,7 @@ function renderEvents(ds) {
         </div>
         <button class="ev-del" onclick="deleteEvent('${e.id}')">✕</button>
       </div>`).join('')
-    : '<div style="font-size:13px;color:#c4a0b2;padding:8px 0">今天沒有行程</div>';
+    : '<div style="font-size:13px;color:#85bfe6;padding:8px 0">今天沒有行程</div>';
   el.innerHTML = `<div class="ev-date-label">${label}的行程</div>${rows}`;
 }
 
@@ -735,9 +840,10 @@ function openNewEvent() {
   document.getElementById('evDate').value = selDate;
   document.getElementById('evTime').value = '';
   document.getElementById('evNote').value = '';
+  document.getElementById('convertedTime').textContent = '—';
   document.querySelectorAll('.color-opt').forEach(e => e.classList.remove('sel'));
-  document.querySelector('.color-opt[data-color="#e07aa0"]').classList.add('sel');
-  selColor = '#e07aa0';
+  document.querySelector('.color-opt[data-color="#4d9fd6"]').classList.add('sel');
+  selColor = '#4d9fd6';
   openModal('eventModal');
 }
 
@@ -821,10 +927,20 @@ document.addEventListener('DOMContentLoaded', () => {
   renderCal();
   loadWeather();
   setInterval(loadWeather, 10 * 60 * 1000);
+  updateClock();
+  setInterval(updateClock, 1000);
+  document.getElementById('ePhotos').addEventListener('change', async (e) => {
+    for (const file of Array.from(e.target.files)) {
+      selectedPhotos.push(await compressImage(file));
+    }
+    e.target.value = '';
+    renderPhotoPreview();
+  });
+  document.getElementById('evDate').addEventListener('change', updateConvertedTime);
 
   if (firebaseConfig.apiKey === 'YOUR_API_KEY') {
     document.body.insertAdjacentHTML('afterbegin',
-      `<div style="background:#fff0f5;border-bottom:2px solid #e07aa0;padding:11px 22px;font-size:13px;text-align:center;position:relative;z-index:9999">
+      `<div style="background:#f0f7fc;border-bottom:2px solid #4d9fd6;padding:11px 22px;font-size:13px;text-align:center;position:relative;z-index:9999">
         ⚠️ 請先完成 Firebase 設定！詳見 <strong>README.md</strong> 的步驟說明。
       </div>`);
   } else {

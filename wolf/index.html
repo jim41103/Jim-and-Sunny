@@ -339,7 +339,7 @@
       <span id="hWeatherTemp">載入中...</span>
     </div>
     <a href="../index.html" class="nav-btn">🏠 首頁</a>
-    <a href="../meishan/index.html" class="nav-btn">🌸 美珊</a>
+    <a href="../meishan/index.html" class="nav-btn">☀️ 美珊</a>
   </div>
 </header>
 
@@ -379,14 +379,14 @@
 
     <!-- Weather -->
     <div class="widget">
-      <div class="w-title">🌤️ 斯德哥爾摩天氣</div>
+      <div class="w-title">🌤️ 台北天氣</div>
       <div class="weather-wrap">
         <div class="w-icon-lg" id="wIcon">⏳</div>
         <div class="w-info">
           <div class="w-temp" id="wTemp">--°C</div>
           <div class="w-label" id="wLabel">載入中...</div>
           <div class="w-details" id="wDetails"></div>
-          <div class="w-loc">STOCKHOLM · SE</div>
+          <div class="w-loc">TAIPEI · TW</div>
         </div>
       </div>
     </div>
@@ -614,7 +614,11 @@ function initDB() {
 function renderList(q = '') {
   const term = q.toLowerCase().trim();
   const list = term
-    ? entries.filter(e => e.title?.toLowerCase().includes(term) || e.content?.toLowerCase().includes(term))
+    ? entries.filter(e =>
+        e.title?.toLowerCase().includes(term) ||
+        e.content?.toLowerCase().includes(term) ||
+        (e.date && e.date.includes(term))
+      )
     : entries;
   const el = document.getElementById('diaryList');
   if (!list.length) {
@@ -779,7 +783,7 @@ async function deleteEvent(id) {
 // ── 天氣 ──
 async function loadWeather() {
   try {
-    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=59.33&longitude=18.07&current=temperature_2m,weathercode,windspeed_10m,apparent_temperature&timezone=Europe%2FStockholm');
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=25.05&longitude=121.53&current=temperature_2m,weathercode,windspeed_10m,apparent_temperature&timezone=Asia%2FTaipei');
     const { current: { temperature_2m, weathercode, windspeed_10m, apparent_temperature } } = await r.json();
     const w = WX[weathercode] || { l:'未知', i:'❓' };
     document.getElementById('wIcon').textContent = w.i;

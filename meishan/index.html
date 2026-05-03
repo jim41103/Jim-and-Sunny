@@ -328,7 +328,7 @@
 <!-- ── Header ── -->
 <header class="header">
   <div class="h-left">
-    <span style="font-size:23px">🌸</span>
+    <span style="font-size:23px">☀️</span>
     <span class="h-title">美珊的日記</span>
   </div>
   <div class="h-right">
@@ -394,7 +394,7 @@
       <div class="w-title">❓ 每日問答</div>
       <div class="qa-q" id="qaQ"></div>
       <div class="qa-section">
-        <div class="qa-label">🌸 我的回答</div>
+        <div class="qa-label">☀️ 我的回答</div>
         <textarea class="qa-input" id="myAnswer" placeholder="寫下今天的回答..."></textarea>
       </div>
       <div class="qa-section">
@@ -608,7 +608,11 @@ function initDB() {
 function renderList(q = '') {
   const term = q.toLowerCase().trim();
   const list = term
-    ? entries.filter(e => e.title?.toLowerCase().includes(term) || e.content?.toLowerCase().includes(term))
+    ? entries.filter(e =>
+        e.title?.toLowerCase().includes(term) ||
+        e.content?.toLowerCase().includes(term) ||
+        (e.date && e.date.includes(term))
+      )
     : entries;
   const el = document.getElementById('diaryList');
   if (!list.length) {

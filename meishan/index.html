@@ -10,6 +10,7 @@
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -433,7 +434,10 @@
     </div>
     <div class="toolbar">
       <h2 class="toolbar-title">📖 日記列表</h2>
-      <button class="btn-new" onclick="openNewEntry()">＋ 新增日記</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-new" style="background:var(--muted)" onclick="exportMarkdown()">📤 匯出</button>
+        <button class="btn-new" onclick="openNewEntry()">＋ 新增日記</button>
+      </div>
     </div>
     <div class="diary-list" id="diaryList">
       <div class="empty-state"><div class="icon">📔</div><p>還沒有日記<br>記錄下在瑞典的第一天吧！</p></div>
@@ -820,6 +824,41 @@ function saveColorLabel(inp) {
 }
 
 function today() { return new Date().toISOString().split('T')[0]; }
+
+// ── 匯出成 Markdown（給 Obsidian 用的備份）──
+async function exportMarkdown() {
+  if (!entries.length) { alert('目前沒有日記可以匯出'); return; }
+  const zip = new JSZip();
+  const root = zip.folder(`diary-${PERSON}-${today()}`);
+  const assets = root.folder('assets');
+  entries.forEach(e => {
+    const slug = (e.title || '無標題').replace(/[\\/:*?"<>|]/g, '').slice(0, 30);
+    let photoMd = '';
+    (e.photos || []).forEach((src, i) => {
+      const m = /^data:image\/(\w+);base64,(.+)$/.exec(src);
+      if (!m) return;
+      const fname = `${e.id}-${i + 1}.${m[1]}`;
+      assets.file(fname, m[2], { base64: true });
+      photoMd += `\n![](assets/${fname})\n`;
+    });
+    const front = [
+      '---',
+      `date: ${e.date || ''}`,
+      `mood: "${e.mood || ''}"`,
+      `title: "${(e.title || '無標題').replace(/"/g, '\\"')}"`,
+      '---',
+      ''
+    ].join('\n');
+    root.file(`${e.date || 'no-date'}-${slug || 'entry'}.md`, front + '\n' + (e.content || '') + '\n' + photoMd);
+  });
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `diary-${PERSON}-${today()}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 function fmtDate(s) {
   if (!s) return '';
   const [y,m,d] = s.split('-');

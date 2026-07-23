@@ -9,6 +9,7 @@
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -333,9 +334,72 @@
       .main { grid-template-columns: 1fr; }
       .header { padding: 0 16px; }
     }
+    /* ── Login Gate ── */
+    .login-gate {
+      position: fixed; inset: 0; z-index: 10000;
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      display: flex; align-items: center; justify-content: center;
+    }
+    .login-box {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 36px 32px;
+      width: 320px;
+      max-width: 90vw;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+      text-align: center;
+    }
+    .login-icon { font-size: 40px; margin-bottom: 8px; }
+    .login-title { font-family: 'Noto Serif TC', serif; font-size: 19px; font-weight: 700; color: var(--primary); }
+    .login-sub { font-size: 13px; color: var(--muted); margin: 6px 0 20px; }
+    .login-box input {
+      width: 100%;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: 'Noto Sans TC', sans-serif;
+      margin-bottom: 10px;
+      outline: none;
+    }
+    .login-box input:focus { border-color: var(--accent); }
+    .login-box button {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-sm);
+      padding: 11px;
+      font-size: 14px;
+      font-family: 'Noto Sans TC', sans-serif;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 4px;
+      transition: background .2s;
+    }
+    .login-box button:hover { background: var(--primary-light); }
+    .login-error { color: #d64545; font-size: 12.5px; margin-top: 10px; min-height: 16px; }
+    .logout-link { cursor: pointer; }
   </style>
 </head>
 <body>
+
+<!-- ── Login Gate ── -->
+<div class="login-gate" id="loginGate">
+  <div class="login-box">
+    <div class="login-icon">🌸</div>
+    <div class="login-title">美珊的日記</div>
+    <div class="login-sub">請登入以繼續</div>
+    <form id="loginForm">
+      <input type="email" id="loginEmail" placeholder="電子郵件" autocomplete="username" required>
+      <input type="password" id="loginPassword" placeholder="密碼" autocomplete="current-password" required>
+      <button type="submit">登入</button>
+    </form>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<div id="appRoot" style="display:none">
 
 <!-- ── Header ── -->
 <header class="header">
@@ -351,6 +415,7 @@
     <div class="clock-pill">🕐 <span id="hClock">--:--</span>&nbsp;斯德哥爾摩</div>
     <a href="../index.html" class="nav-btn">🏠 首頁</a>
     <a href="../wolf/index.html" class="nav-btn">🐺 野狼</a>
+    <a class="nav-btn logout-link" id="logoutBtn">🚪 登出</a>
   </div>
 </header>
 
@@ -541,6 +606,8 @@
   </div>
 </div>
 
+</div><!-- /#appRoot -->
+
 <script>
 // ================================================================
 // Firebase 設定（與 wolf/index.html 填入相同的設定）
@@ -555,6 +622,34 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+const auth = firebase.auth();
+
+// ── 登入驗證 ──
+auth.onAuthStateChanged(user => {
+  if (user) {
+    document.getElementById('loginGate').style.display = 'none';
+    document.getElementById('appRoot').style.display = '';
+    initDB();
+  } else {
+    document.getElementById('loginGate').style.display = 'flex';
+    document.getElementById('appRoot').style.display = 'none';
+  }
+});
+
+document.getElementById('loginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  try {
+    await auth.signInWithEmailAndPassword(email, password);
+  } catch (err) {
+    errEl.textContent = '登入失敗，請確認帳號密碼';
+  }
+});
+
+document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut());
 
 // ── 常數 ──
 const PERSON  = 'meishan';
@@ -957,15 +1052,6 @@ document.addEventListener('DOMContentLoaded', () => {
     renderPhotoPreview();
   });
   document.getElementById('evDate').addEventListener('change', updateConvertedTime);
-
-  if (firebaseConfig.apiKey === 'YOUR_API_KEY') {
-    document.body.insertAdjacentHTML('afterbegin',
-      `<div style="background:#f0f7fc;border-bottom:2px solid #4d9fd6;padding:11px 22px;font-size:13px;text-align:center;position:relative;z-index:9999">
-        ⚠️ 請先完成 Firebase 設定！詳見 <strong>README.md</strong> 的步驟說明。
-      </div>`);
-  } else {
-    initDB();
-  }
 });
 </script>
 </body>

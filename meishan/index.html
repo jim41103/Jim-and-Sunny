@@ -622,6 +622,7 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
+db.enablePersistence().catch(() => {});
 const auth = firebase.auth();
 
 // ── 登入驗證 ──

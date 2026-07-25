@@ -193,6 +193,36 @@
     }
     .cal-d.today.has-event::after { background: #fff; }
 
+    /* ── Diary Calendar View ── */
+    .view-toggle { display: flex; gap: 4px; background: var(--bg); border-radius: var(--radius-sm); padding: 3px; }
+    .view-toggle button {
+      border: none; background: transparent; padding: 6px 12px; font-size: 13px;
+      font-family: 'Noto Sans TC', sans-serif; border-radius: 7px; cursor: pointer; color: var(--muted);
+      transition: all .15s;
+    }
+    .view-toggle button.active { background: var(--card); color: var(--primary); font-weight: 600; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .diary-cal-nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 10px; }
+    .diary-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .diary-cal-d {
+      min-height: 74px;
+      display: flex; flex-direction: column; align-items: center; padding: 6px 2px 4px;
+      border-radius: var(--radius-sm);
+      border: 1.5px solid var(--border);
+      font-size: 12px;
+      cursor: pointer;
+      background: var(--card);
+      transition: all .15s;
+    }
+    .diary-cal-d:hover:not(.empty) { border-color: var(--accent); }
+    .diary-cal-d.today { border-color: var(--accent); border-width: 2px; }
+    .diary-cal-d.empty { visibility: hidden; cursor: default; }
+    .diary-cal-daynum { font-weight: 600; margin-bottom: 4px; }
+    .diary-cal-entry-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-bottom: 4px; }
+    .diary-cal-ex { display: flex; gap: 3px; margin-top: auto; }
+    .diary-cal-ex span { font-size: 13px; opacity: .25; cursor: pointer; }
+    .diary-cal-ex span.done { opacity: 1; }
+    .diary-cal-ex span.readonly { cursor: default; }
+
     .ev-list { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
     .ev-date-label { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 8px; }
     .ev-item { display: flex; align-items: flex-start; gap: 9px; padding: 7px 0; border-bottom: 1px solid var(--border); }
@@ -416,6 +446,7 @@
       <span id="hWeatherIcon">🌤️</span>
       <span id="hWeatherTemp">載入中...</span>
     </div>
+    <div class="weather-pill">💕&nbsp;<span id="hDaysCount">--</span>&nbsp;天</div>
     <div class="clock-pill">🕐 <span id="hClock">--:--</span>&nbsp;斯德哥爾摩</div>
     <a href="../index.html" class="nav-btn">🏠 首頁</a>
     <a href="../wolf/index.html" class="nav-btn">🐺 野狼</a>
@@ -434,13 +465,25 @@
     </div>
     <div class="toolbar">
       <h2 class="toolbar-title">📖 日記列表</h2>
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="view-toggle">
+          <button id="viewBtnList" class="active" onclick="switchDiaryView('list')">📖 列表</button>
+          <button id="viewBtnCal" onclick="switchDiaryView('cal')">📅 月曆</button>
+        </div>
         <button class="btn-new" style="background:var(--muted)" onclick="exportMarkdown()">📤 匯出</button>
         <button class="btn-new" onclick="openNewEntry()">＋ 新增日記</button>
       </div>
     </div>
     <div class="diary-list" id="diaryList">
       <div class="empty-state"><div class="icon">📔</div><p>還沒有日記<br>記錄下在瑞典的第一天吧！</p></div>
+    </div>
+    <div id="diaryCal" style="display:none">
+      <div class="diary-cal-nav">
+        <button class="cal-arrow" onclick="prevDiaryMonth()">‹</button>
+        <span class="cal-title-text" id="diaryCalTitle"></span>
+        <button class="cal-arrow" onclick="nextDiaryMonth()">›</button>
+      </div>
+      <div class="diary-cal-grid" id="diaryCalGrid"></div>
     </div>
   </div>
 
@@ -458,12 +501,6 @@
       <div class="cal-grid" id="calGrid"></div>
       <div class="ev-list" id="evList"></div>
       <button class="btn-add-ev" onclick="openNewEvent()">＋ 新增行程</button>
-    </div>
-
-    <!-- KI 課表 -->
-    <div class="widget">
-      <div class="w-title">🎓 野狼的課表</div>
-      <iframe src="https://calendar.google.com/calendar/embed?src=523c965b68d51ec922b9a67aeea4c3a8b0afab195c499603dbb7408e65e8a235%40group.calendar.google.com&ctz=Asia%2FTaipei" style="border:0;width:100%;height:400px;border-radius:var(--radius-sm)" frameborder="0" scrolling="no"></iframe>
     </div>
 
     <!-- Weather -->
@@ -737,6 +774,8 @@ let calY = new Date().getFullYear(), calM = new Date().getMonth();
 let selDate = today(), selMood = '😊', selColor = '#4d9fd6';
 let editId = null, viewId = null;
 let selectedPhotos = [];
+let diaryCalY = new Date().getFullYear(), diaryCalM = new Date().getMonth();
+let exerciseData = {};
 
 // ── 時區工具 ──
 function tzOffsetMin(tz, date) {
@@ -773,6 +812,13 @@ function updateConvertedTime() {
 function updateClock() {
   document.getElementById('hClock').textContent =
     new Intl.DateTimeFormat('zh-TW', { timeZone:'Europe/Stockholm', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).format(new Date());
+}
+
+const TOGETHER_SINCE = '2025-03-31';
+function updateDaysCount() {
+  const start = new Date(TOGETHER_SINCE + 'T00:00:00');
+  const diffDays = Math.floor((Date.now() - start.getTime()) / 86400000) + 1;
+  document.getElementById('hDaysCount').textContent = diffDays;
 }
 
 // ── 照片壓縮 ──
@@ -873,11 +919,18 @@ function initDB() {
     .onSnapshot(snap => {
       entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderList(document.getElementById('searchInput').value);
+      renderDiaryCal();
     });
   db.collection('calendar_events').orderBy('date')
     .onSnapshot(snap => {
       events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderCal(); renderEvents(selDate);
+    });
+  db.collection('exercise')
+    .onSnapshot(snap => {
+      exerciseData = {};
+      snap.docs.forEach(d => { exerciseData[d.id] = d.data(); });
+      renderDiaryCal();
     });
   loadQA();
 }
@@ -905,6 +958,63 @@ function renderList(q = '') {
       <div class="c-title">${esc(e.title||'無標題')}</div>
       <div class="c-preview">${esc(e.content||'')}</div>
     </div>`).join('');
+}
+
+// ── 日記月曆檢視 ──
+function switchDiaryView(mode) {
+  document.getElementById('viewBtnList').classList.toggle('active', mode === 'list');
+  document.getElementById('viewBtnCal').classList.toggle('active', mode === 'cal');
+  document.getElementById('diaryList').style.display = mode === 'list' ? '' : 'none';
+  document.getElementById('diaryCal').style.display = mode === 'cal' ? '' : 'none';
+  if (mode === 'cal') renderDiaryCal();
+}
+
+function prevDiaryMonth() { diaryCalM--; if (diaryCalM<0){diaryCalM=11;diaryCalY--;} renderDiaryCal(); }
+function nextDiaryMonth() { diaryCalM++; if (diaryCalM>11){diaryCalM=0;diaryCalY++;} renderDiaryCal(); }
+
+function renderDiaryCal() {
+  const gridEl = document.getElementById('diaryCalGrid');
+  if (!gridEl) return;
+  document.getElementById('diaryCalTitle').textContent = `${diaryCalY} 年 ${MONTHS[diaryCalM]}`;
+  const first = new Date(diaryCalY, diaryCalM, 1).getDay();
+  const days  = new Date(diaryCalY, diaryCalM+1, 0).getDate();
+  const entryByDate = {};
+  entries.forEach(e => { entryByDate[e.date] = e; });
+  const td = today();
+
+  let html = WDAYS.map(d => `<div class="cal-dh">${d}</div>`).join('');
+  for (let i=0; i<first; i++) html += '<div class="diary-cal-d empty"></div>';
+  for (let d=1; d<=days; d++) {
+    const ds = `${diaryCalY}-${String(diaryCalM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const entry = entryByDate[ds];
+    const ex = exerciseData[ds] || {};
+    const wolfDone = !!ex.wolf, meishanDone = !!ex.meishan;
+    const wolfCls = ['wolf-icon', wolfDone?'done':'', PERSON==='wolf'?'':'readonly'].filter(Boolean).join(' ');
+    const meishanCls = ['meishan-icon', meishanDone?'done':'', PERSON==='meishan'?'':'readonly'].filter(Boolean).join(' ');
+    const wolfClick = PERSON==='wolf' ? `onclick="event.stopPropagation();toggleExercise('${ds}','wolf')"` : '';
+    const meishanClick = PERSON==='meishan' ? `onclick="event.stopPropagation();toggleExercise('${ds}','meishan')"` : '';
+    html += `<div class="diary-cal-d${ds===td?' today':''}" onclick="${entry?`viewEntry('${entry.id}')`:`openNewEntryOn('${ds}')`}">
+        <div class="diary-cal-daynum">${d}</div>
+        ${entry ? '<div class="diary-cal-entry-dot"></div>' : ''}
+        <div class="diary-cal-ex">
+          <span class="${wolfCls}" ${wolfClick} title="野狼運動">🐺</span>
+          <span class="${meishanCls}" ${meishanClick} title="美珊運動">🌸</span>
+        </div>
+      </div>`;
+  }
+  gridEl.innerHTML = html;
+}
+
+function openNewEntryOn(ds) {
+  openNewEntry();
+  document.getElementById('eDate').value = ds;
+}
+
+async function toggleExercise(ds, person) {
+  const cur = (exerciseData[ds] || {})[person] || false;
+  try {
+    await db.collection('exercise').doc(ds).set({ [person]: !cur }, { merge: true });
+  } catch (e) { console.error(e); }
 }
 
 function openNewEntry() {
@@ -978,11 +1088,35 @@ async function deleteEntry() {
 const MONTHS = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
 const WDAYS  = ['日','一','二','三','四','五','六'];
 
+const GCAL_API_KEY = 'AIzaSyDPmCy2PDO5iPEauExMKCyAYY8Lm6hD_xk';
+const GCAL_CALENDAR_ID = '523c965b68d51ec922b9a67aeea4c3a8b0afab195c499603dbb7408e65e8a235@group.calendar.google.com';
+let gcalEvents = [];
+
+async function loadGCalEvents() {
+  try {
+    const timeMin = new Date(); timeMin.setMonth(timeMin.getMonth() - 2);
+    const timeMax = new Date(); timeMax.setMonth(timeMax.getMonth() + 6);
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events`
+      + `?key=${GCAL_API_KEY}&singleEvents=true&orderBy=startTime`
+      + `&timeMin=${encodeURIComponent(timeMin.toISOString())}&timeMax=${encodeURIComponent(timeMax.toISOString())}`;
+    const r = await fetch(url);
+    const data = await r.json();
+    gcalEvents = (data.items || []).map(ev => {
+      const isAllDay = !!(ev.start && ev.start.date);
+      const date = isAllDay ? ev.start.date : (ev.start?.dateTime || '').slice(0, 10);
+      const time = isAllDay ? '' : (ev.start?.dateTime || '').slice(11, 16);
+      return { id: 'gcal-' + ev.id, date, time, title: ev.summary || '無標題', note: ev.location || '', color: '#8b5cf6', gcal: true };
+    });
+    renderCal();
+    renderEvents(selDate);
+  } catch (e) { console.error('載入課表失敗', e); }
+}
+
 function renderCal() {
   document.getElementById('calTitle').textContent = `${calY} 年 ${MONTHS[calM]}`;
   const first = new Date(calY, calM, 1).getDay();
   const days  = new Date(calY, calM+1, 0).getDate();
-  const evDates = new Set(events.map(e => e.date));
+  const evDates = new Set([...events.map(e => e.date), ...gcalEvents.map(e => e.date)]);
   const td = today();
 
   let html = WDAYS.map(d => `<div class="cal-dh">${d}</div>`).join('');
@@ -1000,7 +1134,8 @@ function prevMonth() { calM--; if (calM<0){calM=11;calY--;} renderCal(); }
 function nextMonth() { calM++; if (calM>11){calM=0;calY++;} renderCal(); }
 
 function renderEvents(ds) {
-  const ev = events.filter(e => e.date === ds).sort((a,b) => (a.time||'00:00').localeCompare(b.time||'00:00'));
+  const ev = [...events.filter(e => e.date === ds), ...gcalEvents.filter(e => e.date === ds)]
+    .sort((a,b) => (a.time||'00:00').localeCompare(b.time||'00:00'));
   const [y,m,d] = ds.split('-');
   const label = `${y}年${parseInt(m)}月${parseInt(d)}日`;
   const el = document.getElementById('evList');
@@ -1008,10 +1143,10 @@ function renderEvents(ds) {
     ? ev.map(e => `<div class="ev-item">
         <div class="ev-dot" style="background:${e.color||'#e07aa0'}"></div>
         <div class="ev-info">
-          <div class="ev-title">${esc(e.title)}</div>
+          <div class="ev-title">${e.gcal ? '🎓 ' : ''}${esc(e.title)}</div>
           <div class="ev-time">${e.time ? e.time+(e.note?' · '+esc(e.note):'') : (e.note?esc(e.note):'整天')}</div>
         </div>
-        <button class="ev-del" onclick="deleteEvent('${e.id}')">✕</button>
+        ${e.gcal ? '' : `<button class="ev-del" onclick="deleteEvent('${e.id}')">✕</button>`}
       </div>`).join('')
     : '<div style="font-size:13px;color:#85bfe6;padding:8px 0">今天沒有行程</div>';
   el.innerHTML = `<div class="ev-date-label">${label}的行程</div>${rows}`;
@@ -1107,10 +1242,12 @@ document.querySelectorAll('.overlay').forEach(ov =>
 
 document.addEventListener('DOMContentLoaded', () => {
   renderCal();
+  loadGCalEvents();
   loadWeather();
   setInterval(loadWeather, 10 * 60 * 1000);
   updateClock();
   setInterval(updateClock, 1000);
+  updateDaysCount();
   loadColorLabels();
   document.getElementById('ePhotos').addEventListener('change', async (e) => {
     for (const file of Array.from(e.target.files)) {

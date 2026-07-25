@@ -1015,7 +1015,7 @@ function renderDiaryCal() {
   const gridEl = document.getElementById('diaryCalGrid');
   if (!gridEl) return;
   document.getElementById('diaryCalTitle').textContent = `${diaryCalY} 年 ${MONTHS[diaryCalM]}`;
-  const first = new Date(diaryCalY, diaryCalM, 1).getDay();
+  const first = (new Date(diaryCalY, diaryCalM, 1).getDay() + 6) % 7;
   const days  = new Date(diaryCalY, diaryCalM+1, 0).getDate();
   const entryByDate = {};
   entries.forEach(e => { entryByDate[e.date] = e; });
@@ -1126,7 +1126,7 @@ async function deleteEntry() {
 
 // ── 行事曆 ──
 const MONTHS = ['一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月'];
-const WDAYS  = ['日','一','二','三','四','五','六'];
+const WDAYS  = ['一','二','三','四','五','六','日'];
 
 const GCAL_API_KEY = 'AIzaSyDPmCy2PDO5iPEauExMKCyAYY8Lm6hD_xk';
 const GCAL_CALENDAR_ID = '523c965b68d51ec922b9a67aeea4c3a8b0afab195c499603dbb7408e65e8a235@group.calendar.google.com';
@@ -1154,7 +1154,7 @@ async function loadGCalEvents() {
 
 function renderCal() {
   document.getElementById('calTitle').textContent = `${calY} 年 ${MONTHS[calM]}`;
-  const first = new Date(calY, calM, 1).getDay();
+  const first = (new Date(calY, calM, 1).getDay() + 6) % 7;
   const days  = new Date(calY, calM+1, 0).getDate();
   const evDates = new Set([...events.map(e => e.date), ...gcalEvents.map(e => e.date)]);
   const td = today();

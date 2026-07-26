@@ -698,13 +698,28 @@ const firebaseConfig = {
   messagingSenderId: "835191986880",
   appId:             "1:835191986880:web:96d01db0f10928b5862b25"
 };
+// 保險 1：Firebase SDK 沒載入（網路擋 gstatic、離線開啟）時，
+// 原本 loginGate 與 appRoot 都是 display:none，會變成整頁空白。
+if (typeof firebase === 'undefined') {
+  document.getElementById('loginGate').style.display = 'flex';
+  document.getElementById('loginError').textContent = '連線失敗，請確認網路後重新整理頁面';
+  throw new Error('Firebase SDK 載入失敗');
+}
+
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 db.enablePersistence().catch(() => {});
 const auth = firebase.auth();
 
 // ── 登入驗證 ──
+let authResolved = false;
+// 保險 2：auth 初始化卡住超過 5 秒就先把登入畫面顯示出來，不留白畫面
+setTimeout(() => {
+  if (!authResolved) document.getElementById('loginGate').style.display = 'flex';
+}, 5000);
+
 auth.onAuthStateChanged(user => {
+  authResolved = true;
   if (user) {
     document.getElementById('loginGate').style.display = 'none';
     document.getElementById('appRoot').style.display = '';
@@ -948,22 +963,35 @@ function esc(s) {
 
 // ── Firebase 監聽 ──
 function initDB() {
-  db.collection(COL).orderBy('date','desc')
+  // 不用 Firestore 的 orderBy：缺少 date 欄位的日記會被 orderBy 靜默排除，
+  // 改成全量取回後在前端排序，任何一篇都不會消失。
+  db.collection(COL)
     .onSnapshot(snap => {
       entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
       renderList(document.getElementById('searchInput').value);
       renderDiaryCal();
+    }, err => {
+      console.error('日記載入失敗', err);
+      alert('日記載入失敗（' + err.code + '），請重新整理或確認登入狀態');
     });
-  db.collection('calendar_events').orderBy('date')
+  db.collection('calendar_events')
     .onSnapshot(snap => {
       events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      events.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
       renderCal(); renderEvents(selDate);
+    }, err => {
+      console.error('行事曆載入失敗', err);
+      alert('行事曆載入失敗（' + err.code + '）');
     });
   db.collection('exercise')
     .onSnapshot(snap => {
       exerciseData = {};
       snap.docs.forEach(d => { exerciseData[d.id] = d.data(); });
       renderDiaryCal();
+    }, err => {
+      console.error('運動紀錄載入失敗', err);
+      alert('運動紀錄載入失敗（' + err.code + '）');
     });
   loadQA();
 }
@@ -1049,11 +1077,15 @@ function openNewEntryOn(ds) {
   document.getElementById('eDate').value = ds;
 }
 
-async function toggleExercise(ds, person) {
+function toggleExercise(ds, person) {
   const cur = (exerciseData[ds] || {})[person] || false;
-  try {
-    await db.collection('exercise').doc(ds).set({ [person]: !cur }, { merge: true });
-  } catch (e) { console.error(e); }
+  // 不用 await：離線時 Firestore 會先本地寫入、恢復連線再同步，promise 不會馬上 resolve。
+  // 若伺服器拒絕（權限規則等），本地樂觀更新會被回滾——以前是靜默的，現在跳出提示。
+  db.collection('exercise').doc(ds).set({ [person]: !cur }, { merge: true })
+    .catch(e => {
+      console.error(e);
+      alert('運動紀錄儲存失敗：' + (e.code || e.message) + '\n畫面上的紀錄已被還原，請確認網路或 Firestore 權限設定。');
+    });
 }
 
 function openNewEntry() {

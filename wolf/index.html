@@ -215,7 +215,7 @@
       transition: all .15s;
     }
     .diary-cal-today-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .diary-cal-legend { text-align: center; font-size: 11.5px; color: var(--muted); margin-bottom: 10px; }
+    .diary-cal-legend { text-align: center; font-size: 11.5px; color: var(--muted); margin-top: 12px; }
     .diary-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
     .diary-cal-d {
       min-height: 92px;
@@ -230,9 +230,9 @@
     .diary-cal-d:hover:not(.empty) { border-color: var(--accent); }
     .diary-cal-d.today { border-color: var(--accent); border-width: 2px; }
     .diary-cal-d.empty { visibility: hidden; cursor: default; }
-    .diary-cal-daynum { font-weight: 600; margin-bottom: 4px; }
-    .diary-cal-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; margin-bottom: 4px; min-height: 8px; }
-    .diary-cal-entry-dot { width: 8px; height: 8px; border-radius: 50%; cursor: pointer; transition: transform .15s; }
+    .diary-cal-daynum { font-weight: 400; margin-bottom: 4px; }
+    .diary-cal-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-bottom: 4px; min-height: 12px; }
+    .diary-cal-entry-dot { width: 12px; height: 12px; border-radius: 50%; cursor: pointer; transition: transform .15s; }
     .diary-cal-entry-dot:hover { transform: scale(1.5); }
     .diary-cal-entry-dot.dot-wolf { background: #4a90e2; }
     .diary-cal-entry-dot.dot-meishan { background: #e8799f; }
@@ -439,8 +439,8 @@
       .diary-cal-d { padding: 4px 1px; font-size: 12px; min-width: 0; }
       .diary-cal-ex { gap: 3px; }
       .diary-cal-ex span { width: 18px; height: 18px; font-size: 10px; }
-      .diary-cal-dots { gap: 2px; }
-      .diary-cal-entry-dot { width: 7px; height: 7px; }
+      .diary-cal-dots { gap: 3px; min-height: 11px; }
+      .diary-cal-entry-dot { width: 11px; height: 11px; }
     }
     /* ── Login Gate ── */
     .login-gate {
@@ -562,9 +562,9 @@
         <button class="cal-arrow" onclick="nextDiaryMonth()">›</button>
         <button class="diary-cal-today-btn" onclick="gotoDiaryToday()">今天</button>
       </div>
+      <div class="diary-cal-grid" id="diaryCalGrid"></div>
       <div class="diary-cal-legend">🐺／🌸 點擊圖示標記當天有沒有運動，各自只能標記自己的狀態<br>
         <span style="color:#4a90e2">●</span> 野狼的日記　<span style="color:#e8799f">●</span> 美珊的日記　每篇一個點，點小點可直接開啟</div>
-      <div class="diary-cal-grid" id="diaryCalGrid"></div>
     </div>
   </div>
 
@@ -888,7 +888,7 @@ let calY = new Date().getFullYear(), calM = new Date().getMonth();
 let selDate = today(), selMood = '😊', selColor = '#4a90e2';
 let editId = null, viewId = null;
 let diaryCalY = new Date().getFullYear(), diaryCalM = new Date().getMonth();
-const BUILD = 'v2026-07-27.6';   // 每次部署都會改，用來確認瀏覽器拿到的是不是最新版
+const BUILD = 'v2026-07-27.7';   // 每次部署都會改，用來確認瀏覽器拿到的是不是最新版
 let lastFromCache = null;
 let exerciseData = {};
 let partnerEntries = [];          // 對方的日記，只讀

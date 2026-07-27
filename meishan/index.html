@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>🌸 美珊的日記</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
@@ -77,8 +77,8 @@
       gap: 22px;
       align-items: start;
     }
-    .left-col  { display: flex; flex-direction: column; gap: 14px; }
-    .right-col { display: flex; flex-direction: column; gap: 14px; }
+    .left-col  { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .right-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 
     /* ── Search & Toolbar ── */
     .search-wrap {
@@ -399,6 +399,38 @@
       .main { grid-template-columns: 1fr; }
       .header { padding: 0 16px; }
     }
+    /* 手機直向：iPhone 17 為 402px、Air 420px、Pro Max 440px，
+       原本頁首單列固定高 62px 會被 6 顆按鈕撐爆而使整頁可左右滑動，改為可換行 */
+    @media (max-width: 520px) {
+      .header {
+        height: auto;
+        min-height: 54px;
+        padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+        flex-wrap: wrap;
+        row-gap: 8px;
+      }
+      .h-left { gap: 8px; }
+      .h-title { font-size: 16px; letter-spacing: 0; }
+      .h-right {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px;
+      }
+      .weather-pill, .clock-pill { padding: 4px 10px; font-size: 12px; gap: 4px; }
+      .nav-btn { padding: 5px 11px; font-size: 12px; }
+      .clock-pill .clock-city { display: none; }   /* 窄螢幕省掉「台北／斯德哥爾摩」字樣 */
+      .header { position: static; }
+      .main { padding: 14px 12px; gap: 14px; }
+      .toolbar { flex-wrap: wrap; gap: 8px; }
+      /* minmax(0,1fr)：預設 1fr 的最小寬是內容寬，格子裡兩顆運動圖示會把整列撐爆 */
+      .diary-cal-grid { gap: 4px; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+      .diary-cal-d { padding: 4px 1px; font-size: 12px; min-width: 0; }
+      .diary-cal-ex { gap: 3px; }
+      .diary-cal-ex span { width: 18px; height: 18px; font-size: 10px; }
+      .diary-cal-dots { gap: 2px; }
+      .diary-cal-entry-dot { width: 7px; height: 7px; }
+    }
     /* ── Login Gate ── */
     .login-gate {
       position: fixed; inset: 0; z-index: 10000;
@@ -482,7 +514,7 @@
       <span id="hWeatherTemp">載入中...</span>
     </div>
     <div class="weather-pill">💕&nbsp;<span id="hDaysCount">--</span>&nbsp;天</div>
-    <div class="clock-pill">🕐 <span id="hClock">--:--</span>&nbsp;斯德哥爾摩</div>
+    <div class="clock-pill">🕐 <span id="hClock">--:--</span><span class="clock-city">&nbsp;斯德哥爾摩</span></div>
     <a href="../index.html" class="nav-btn">🏠 首頁</a>
     <a href="../wolf/index.html" class="nav-btn">🐺 野狼</a>
     <a class="nav-btn logout-link" id="logoutBtn">🚪 登出</a>
@@ -718,7 +750,11 @@ if (typeof firebase === 'undefined') {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-db.enablePersistence().catch(() => {});
+// synchronizeTabs：不加這個參數時，同一個網域只有「第一個」頁面能取得離線快取的
+// 使用權；Safari 在頁面切換時常常沒有即時釋放，導致切到對方頁面再切回來時，
+// 這一頁拿不到快取、監聽器讀不到資料，畫面上的日記與運動紀錄就整批消失。
+db.enablePersistence({ synchronizeTabs: true })
+  .catch(err => console.warn('離線快取未啟用：', err.code, err.message));
 const auth = firebase.auth();
 
 // ── 登入驗證 ──

@@ -795,6 +795,8 @@ auth.onAuthStateChanged(user => {
       }
     }, 8000);
   } else {
+    // 先拆掉所有監聽器再顯示登入畫面，否則它們會在未登入狀態下被規則拒絕而噴 alert
+    teardownDB();
     document.getElementById('loginGate').style.display = 'flex';
     document.getElementById('appRoot').style.display = 'none';
   }
@@ -1114,8 +1116,27 @@ function esc(s) {
 
 // 日記篇數會累積到 1,400+ 篇，全量 onSnapshot 會撞 Firestore 免費方案的流量上限，
 // 所以只即時監聽「最近 20 篇」，更早的日記改用一次性 .get() 分頁載入（見 loadMoreEntries）。
+// 所有 onSnapshot 的解除函式。登出時必須全部拆掉，否則 auth 變成 null 之後
+// 監聽器還掛著，會被安全規則拒絕而噴出一串 permission-denied 提示。
+let dbUnsubs = [];
+function teardownDB() {
+  dbUnsubs.forEach(fn => { try { fn(); } catch (e) {} });
+  dbUnsubs = [];
+  if (eventsUnsub) { eventsUnsub(); eventsUnsub = null; }
+}
+// 監聽器的錯誤處理：已經登出就安靜收場（登出過程中的 permission-denied 是正常現象），
+// 仍在登入狀態才是真的出問題，才需要驚動使用者。
+function snapErr(label, withAlert) {
+  return err => {
+    if (!auth.currentUser) return;
+    console.error(label, err);
+    if (withAlert) alert(label + '（' + err.code + '）');
+  };
+}
+
 function initDB() {
-  db.collection(COL).orderBy('date', 'desc').limit(20)
+  teardownDB();
+  dbUnsubs.push(db.collection(COL).orderBy('date', 'desc').limit(20)
     .onSnapshot(snap => {
       const recent = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if (snap.docs.length) diaryTopCursor = snap.docs[snap.docs.length - 1];
@@ -1126,27 +1147,22 @@ function initDB() {
       entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
       renderList(document.getElementById('searchInput').value);
       renderDiaryCal(); updateBuildInfo();
-    }, err => {
-      console.error('日記載入失敗', err);
-      alert('日記載入失敗（' + err.code + '），請重新整理或確認登入狀態');
-    });
+    }, snapErr('日記載入失敗，請重新整理或確認登入狀態', true)));
   // 共同行事曆：只監聽目前顯示月份的範圍，切換月份時在 prevMonth/nextMonth 裡重新訂閱
   subscribeEventsForMonth(calY, calM);
   // 對方的日記：只讀，只監聽最近 20 篇，用來在自己的月曆上顯示對方那天有沒有寫；
   // 超過 20 篇之後的舊資料不再監聽，避免對方那 1,000+ 篇也全部即時同步。
-  db.collection(PARTNER_COL).orderBy('date', 'desc').limit(20)
+  dbUnsubs.push(db.collection(PARTNER_COL).orderBy('date', 'desc').limit(20)
     .onSnapshot(snap => {
       partnerEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderDiaryCal(); updateBuildInfo();
-    }, err => {
-      console.error('對方日記載入失敗', err);
-    });
+    }, snapErr('對方日記載入失敗', false)));
   // 只監聽最近 60 天的運動紀錄；exercise 的 document ID 本身就是 YYYY-MM-DD，
   // 用 documentId() 做範圍查詢即可，不需要額外的 date 欄位。
   // includeMetadataChanges：才能從 metadata.fromCache 判斷資料是否還沒同步到雲端
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 60);
   const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;
-  db.collection('exercise')
+  dbUnsubs.push(db.collection('exercise')
     .where(firebase.firestore.FieldPath.documentId(), '>=', cutoffStr)
     .onSnapshot({ includeMetadataChanges: true }, snap => {
       exerciseData = {};
@@ -1154,10 +1170,7 @@ function initDB() {
       const banner = document.getElementById('syncBanner');
       if (banner) banner.style.display = snap.metadata.fromCache ? 'block' : 'none';
       renderDiaryCal(); updateBuildInfo(snap.metadata.fromCache);
-    }, err => {
-      console.error('運動紀錄載入失敗', err);
-      alert('運動紀錄載入失敗（' + err.code + '）');
-    });
+    }, snapErr('運動紀錄載入失敗', true)));
   loadQA();
 }
 
@@ -1174,10 +1187,7 @@ function subscribeEventsForMonth(y, m) {
       events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       events.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
       renderCal(); renderEvents(selDate);
-    }, err => {
-      console.error('行事曆載入失敗', err);
-      alert('行事曆載入失敗（' + err.code + '）');
-    });
+    }, snapErr('行事曆載入失敗', true));
 }
 
 // 滑到列表底部時載入更早的日記（一次性 .get()，不掛 onSnapshot listener）

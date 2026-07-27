@@ -228,7 +228,18 @@
     .diary-cal-d.today { border-color: var(--accent); border-width: 2px; }
     .diary-cal-d.empty { visibility: hidden; cursor: default; }
     .diary-cal-daynum { font-weight: 600; margin-bottom: 4px; }
-    .diary-cal-entry-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-bottom: 4px; }
+    .diary-cal-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; margin-bottom: 4px; min-height: 8px; }
+    .diary-cal-entry-dot { width: 8px; height: 8px; border-radius: 50%; cursor: pointer; transition: transform .15s; }
+    .diary-cal-entry-dot:hover { transform: scale(1.5); }
+    .diary-cal-entry-dot.dot-wolf { background: #4a90e2; }
+    .diary-cal-entry-dot.dot-meishan { background: #e8799f; }
+    .diary-cal-ex span.syncing { border-style: dashed; animation: exPulse 1s ease-in-out infinite; }
+    @keyframes exPulse { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+    #syncBanner {
+      display: none; position: fixed; left: 0; right: 0; top: 0; z-index: 999;
+      background: #b8860b; color: #fff; text-align: center; font-size: 13px;
+      padding: 7px 12px; line-height: 1.4;
+    }
     .diary-cal-ex { display: flex; gap: 6px; margin-top: auto; }
     .diary-cal-ex span {
       font-size: 16px;
@@ -456,6 +467,7 @@
   </div>
 </div>
 
+<div id="syncBanner">⚠️ 目前顯示的是本機暫存資料，尚未同步到雲端。請確認網路連線，並先不要關閉頁面。</div>
 <div id="appRoot" style="display:none">
 
 <!-- ── Header ── -->
@@ -507,7 +519,8 @@
         <button class="cal-arrow" onclick="nextDiaryMonth()">›</button>
         <button class="diary-cal-today-btn" onclick="gotoDiaryToday()">今天</button>
       </div>
-      <div class="diary-cal-legend">🐺／🌸 點擊圖示標記當天有沒有運動，各自只能標記自己的狀態</div>
+      <div class="diary-cal-legend">🐺／🌸 點擊圖示標記當天有沒有運動，各自只能標記自己的狀態<br>
+        <span style="color:#4a90e2">●</span> 野狼的日記　<span style="color:#e8799f">●</span> 美珊的日記　每篇一個點，點小點可直接開啟</div>
       <div class="diary-cal-grid" id="diaryCalGrid"></div>
     </div>
   </div>
@@ -622,9 +635,9 @@
       <div class="view-photos" id="vPhotos"></div>
     </div>
     <div class="m-foot">
-      <button class="btn-del" onclick="deleteEntry()">刪除</button>
+      <button class="btn-del" id="vDelBtn" onclick="deleteEntry()">刪除</button>
       <button class="btn-cancel" onclick="closeModal('viewModal')">關閉</button>
-      <button class="btn-submit" onclick="editEntry()">編輯</button>
+      <button class="btn-submit" id="vEditBtn" onclick="editEntry()">編輯</button>
     </div>
   </div>
 </div>
@@ -765,6 +778,8 @@ document.getElementById('forgotPasswordLink').addEventListener('click', async e 
 const PERSON  = 'meishan';
 const PARTNER = 'wolf';
 const COL     = 'diary_meishan';
+const PARTNER_COL = 'diary_wolf';
+const PARTNER_ICON = '🐺';
 
 const QA_QUESTIONS = [
   '今天最美好的瞬間是什麼？',
@@ -816,6 +831,8 @@ let editId = null, viewId = null;
 let selectedPhotos = [];
 let diaryCalY = new Date().getFullYear(), diaryCalM = new Date().getMonth();
 let exerciseData = {};
+let partnerEntries = [];          // 對方的日記，只讀
+const pendingEx = new Set();      // 尚未取得伺服器確認的運動紀錄，key = "日期:人" 
 
 // ── 時區工具 ──
 function tzOffsetMin(tz, date) {
@@ -979,10 +996,21 @@ function initDB() {
       console.error('行事曆載入失敗', err);
       alert('行事曆載入失敗（' + err.code + '）');
     });
-  db.collection('exercise')
+  // 對方的日記：只讀，用來在自己的月曆上顯示對方那天有沒有寫
+  db.collection(PARTNER_COL)
     .onSnapshot(snap => {
+      partnerEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderDiaryCal();
+    }, err => {
+      console.error('對方日記載入失敗', err);
+    });
+  // includeMetadataChanges：才能從 metadata.fromCache 判斷資料是否還沒同步到雲端
+  db.collection('exercise')
+    .onSnapshot({ includeMetadataChanges: true }, snap => {
       exerciseData = {};
       snap.docs.forEach(d => { exerciseData[d.id] = d.data(); });
+      const banner = document.getElementById('syncBanner');
+      if (banner) banner.style.display = snap.metadata.fromCache ? 'block' : 'none';
       renderDiaryCal();
     }, err => {
       console.error('運動紀錄載入失敗', err);
@@ -1039,24 +1067,29 @@ function renderDiaryCal() {
   document.getElementById('diaryCalTitle').textContent = `${diaryCalY} 年 ${MONTHS[diaryCalM]}`;
   const first = (new Date(diaryCalY, diaryCalM, 1).getDay() + 6) % 7;
   const days  = new Date(diaryCalY, diaryCalM+1, 0).getDate();
-  const entryByDate = {};
-  entries.forEach(e => { entryByDate[e.date] = e; });
+  // 同一天可能有多篇，改用陣列而非物件，避免後面的日記蓋掉前面的
+  const mineByDate = {}, theirsByDate = {};
+  entries.forEach(e => { (mineByDate[e.date] = mineByDate[e.date] || []).push(e); });
+  partnerEntries.forEach(e => { (theirsByDate[e.date] = theirsByDate[e.date] || []).push(e); });
   const td = today();
 
   let html = WDAYS.map(d => `<div class="cal-dh">${d}</div>`).join('');
   for (let i=0; i<first; i++) html += '<div class="diary-cal-d empty"></div>';
   for (let d=1; d<=days; d++) {
     const ds = `${diaryCalY}-${String(diaryCalM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const entry = entryByDate[ds];
+    const mine = mineByDate[ds] || [], theirs = theirsByDate[ds] || [];
+    const dots =
+      mine.map(e => `<span class="diary-cal-entry-dot dot-${PERSON}" onclick="event.stopPropagation();viewEntry('${e.id}')" title="${esc(e.title||'無標題')}"></span>`).join('') +
+      theirs.map(e => `<span class="diary-cal-entry-dot dot-${PARTNER}" onclick="event.stopPropagation();viewPartnerEntry('${e.id}')" title="${PARTNER_ICON} ${esc(e.title||'無標題')}"></span>`).join('');
     const ex = exerciseData[ds] || {};
     const wolfDone = !!ex.wolf, meishanDone = !!ex.meishan;
-    const wolfCls = ['wolf-icon', wolfDone?'done':'', PERSON==='wolf'?'':'readonly'].filter(Boolean).join(' ');
-    const meishanCls = ['meishan-icon', meishanDone?'done':'', PERSON==='meishan'?'':'readonly'].filter(Boolean).join(' ');
+    const wolfCls = ['wolf-icon', wolfDone?'done':'', PERSON==='wolf'?'':'readonly', pendingEx.has(ds+':wolf')?'syncing':''].filter(Boolean).join(' ');
+    const meishanCls = ['meishan-icon', meishanDone?'done':'', PERSON==='meishan'?'':'readonly', pendingEx.has(ds+':meishan')?'syncing':''].filter(Boolean).join(' ');
     const wolfClick = PERSON==='wolf' ? `onclick="event.stopPropagation();toggleExercise('${ds}','wolf')"` : '';
     const meishanClick = PERSON==='meishan' ? `onclick="event.stopPropagation();toggleExercise('${ds}','meishan')"` : '';
-    html += `<div class="diary-cal-d${ds===td?' today':''}" onclick="${entry?`viewEntry('${entry.id}')`:`openNewEntryOn('${ds}')`}">
+    html += `<div class="diary-cal-d${ds===td?' today':''}" onclick="openNewEntryOn('${ds}')">
         <div class="diary-cal-daynum">${d}</div>
-        ${entry ? '<div class="diary-cal-entry-dot"></div>' : ''}
+        <div class="diary-cal-dots">${dots}</div>
         <div class="diary-cal-ex">
           <span class="${wolfCls}" ${wolfClick} title="野狼運動">🐺</span>
           <span class="${meishanCls}" ${meishanClick} title="美珊運動">🌸</span>
@@ -1072,11 +1105,17 @@ function openNewEntryOn(ds) {
 }
 
 function toggleExercise(ds, person) {
+  const key = ds + ':' + person;
+  if (pendingEx.has(key)) return;   // 同一格還在同步中就不重複送，避免連點把狀態切回去
   const cur = (exerciseData[ds] || {})[person] || false;
-  // 不用 await：離線時 Firestore 會先本地寫入、恢復連線再同步，promise 不會馬上 resolve。
-  // 若伺服器拒絕（權限規則等），本地樂觀更新會被回滾——以前是靜默的，現在跳出提示。
+  // set() 的 promise 只有在「伺服器確認寫入」後才 resolve。離線時它會一直 pending，
+  // 這段期間圖示維持虛線閃爍＝還沒存到雲端，避免使用者誤以為已經存好就關掉頁面。
+  pendingEx.add(key);
+  renderDiaryCal();
   db.collection('exercise').doc(ds).set({ [person]: !cur }, { merge: true })
+    .then(() => { pendingEx.delete(key); renderDiaryCal(); })
     .catch(e => {
+      pendingEx.delete(key); renderDiaryCal();
       console.error(e);
       alert('運動紀錄儲存失敗：' + (e.code || e.message) + '\n畫面上的紀錄已被還原，請確認網路或 Firestore 權限設定。');
     });
@@ -1118,7 +1157,22 @@ async function saveEntry() {
 function viewEntry(id) {
   const e = entries.find(x => x.id === id); if (!e) return;
   viewId = id;
-  document.getElementById('vTitle').textContent = e.title||'無標題';
+  document.getElementById('vDelBtn').style.display = '';
+  document.getElementById('vEditBtn').style.display = '';
+  fillViewModal(e, e.title||'無標題');
+}
+
+// 對方的日記：只能看，不能改也不能刪
+function viewPartnerEntry(id) {
+  const e = partnerEntries.find(x => x.id === id); if (!e) return;
+  viewId = null;
+  document.getElementById('vDelBtn').style.display = 'none';
+  document.getElementById('vEditBtn').style.display = 'none';
+  fillViewModal(e, PARTNER_ICON + ' ' + (e.title||'無標題'));
+}
+
+function fillViewModal(e, titleText) {
+  document.getElementById('vTitle').textContent = titleText;
   document.getElementById('vDate').textContent = fmtDate(e.date);
   document.getElementById('vMood').textContent = e.mood||'📔';
   document.getElementById('vContent').textContent = e.content||'';

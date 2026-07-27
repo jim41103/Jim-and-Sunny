@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>🐺 野狼的日記</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
@@ -235,6 +238,12 @@
     .diary-cal-entry-dot.dot-meishan { background: #e8799f; }
     .diary-cal-ex span.syncing { border-style: dashed; animation: exPulse 1s ease-in-out infinite; }
     @keyframes exPulse { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+    #buildInfo {
+      text-align: center; font-size: 11.5px; color: var(--muted);
+      padding: 4px 12px 18px; line-height: 1.6; word-break: break-word;
+    }
+    #buildInfo .bi-warn { color: #b8860b; font-weight: 600; }
+    #buildInfo .bi-ok { color: #2e7d4f; }
     #syncBanner {
       display: none; position: fixed; left: 0; right: 0; top: 0; z-index: 999;
       background: #b8860b; color: #fff; text-align: center; font-size: 13px;
@@ -605,6 +614,7 @@
     </div>
 
   </div>
+  <div id="buildInfo">載入中…</div>
 </div>
 
 <!-- ── Modal: New/Edit Entry ── -->
@@ -772,6 +782,7 @@ auth.onAuthStateChanged(user => {
   if (user) {
     document.getElementById('loginGate').style.display = 'none';
     document.getElementById('appRoot').style.display = '';
+    updateBuildInfo();
     initDB();
   } else {
     document.getElementById('loginGate').style.display = 'flex';
@@ -869,6 +880,8 @@ let calY = new Date().getFullYear(), calM = new Date().getMonth();
 let selDate = today(), selMood = '😊', selColor = '#4a90e2';
 let editId = null, viewId = null;
 let diaryCalY = new Date().getFullYear(), diaryCalM = new Date().getMonth();
+const BUILD = 'v2026-07-27.5';   // 每次部署都會改，用來確認瀏覽器拿到的是不是最新版
+let lastFromCache = null;
 let exerciseData = {};
 let partnerEntries = [];          // 對方的日記，只讀
 const pendingEx = new Set();      // 尚未取得伺服器確認的運動紀錄，key = "日期:人" 
@@ -1023,7 +1036,7 @@ function initDB() {
       entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
       renderList(document.getElementById('searchInput').value);
-      renderDiaryCal();
+      renderDiaryCal(); updateBuildInfo();
     }, err => {
       console.error('日記載入失敗', err);
       alert('日記載入失敗（' + err.code + '），請重新整理或確認登入狀態');
@@ -1041,7 +1054,7 @@ function initDB() {
   db.collection(PARTNER_COL)
     .onSnapshot(snap => {
       partnerEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderDiaryCal();
+      renderDiaryCal(); updateBuildInfo();
     }, err => {
       console.error('對方日記載入失敗', err);
     });
@@ -1052,7 +1065,7 @@ function initDB() {
       snap.docs.forEach(d => { exerciseData[d.id] = d.data(); });
       const banner = document.getElementById('syncBanner');
       if (banner) banner.style.display = snap.metadata.fromCache ? 'block' : 'none';
-      renderDiaryCal();
+      renderDiaryCal(); updateBuildInfo(snap.metadata.fromCache);
     }, err => {
       console.error('運動紀錄載入失敗', err);
       alert('運動紀錄載入失敗（' + err.code + '）');
@@ -1101,6 +1114,19 @@ function gotoDiaryToday() {
   const d = new Date();
   diaryCalY = d.getFullYear(); diaryCalM = d.getMonth();
   renderDiaryCal();
+}
+
+// 頁尾狀態列：一行同時回答「我是不是最新版」與「資料到底有沒有讀到」
+function updateBuildInfo(fromCache) {
+  if (fromCache !== undefined) lastFromCache = fromCache;
+  const el = document.getElementById('buildInfo');
+  if (!el) return;
+  const state = lastFromCache === null
+    ? '<span class="bi-warn">尚未連上 Firestore</span>'
+    : lastFromCache
+      ? '<span class="bi-warn">⚠️ 本機暫存，未同步雲端</span>'
+      : '<span class="bi-ok">☁️ 已同步雲端</span>';
+  el.innerHTML = `版本 ${BUILD}　|　日記 ${entries.length} 篇　對方 ${partnerEntries.length} 篇　運動 ${Object.keys(exerciseData).length} 天　|　${state}`;
 }
 
 function renderDiaryCal() {

@@ -763,11 +763,11 @@ if (typeof firebase === 'undefined') {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-// synchronizeTabs：不加這個參數時，同一個網域只有「第一個」頁面能取得離線快取的
-// 使用權；Safari 在頁面切換時常常沒有即時釋放，導致切到對方頁面再切回來時，
-// 這一頁拿不到快取、監聽器讀不到資料，畫面上的日記與運動紀錄就整批消失。
-db.enablePersistence({ synchronizeTabs: true })
-  .catch(err => console.warn('離線快取未啟用：', err.code, err.message));
+// 這裡原本開啟離線快取（為了加速換頁）。已移除，原因：
+// 該設定必須在任何其他 Firestore 操作之前完成，而 Safari 的 IndexedDB 會讓它
+// 卡住而不是失敗——.catch 永遠不會被呼叫，後面所有 onSnapshot 全部排在它後面等，
+// 結果是日記、運動紀錄、行事曆全部讀不到，且沒有任何錯誤訊息。
+// 這幾個 collection 都很小（各十幾筆），直接連線讀取的速度差異可以忽略。
 const auth = firebase.auth();
 
 // ── 登入驗證 ──
@@ -784,6 +784,14 @@ auth.onAuthStateChanged(user => {
     document.getElementById('appRoot').style.display = '';
     updateBuildInfo();
     initDB();
+    // 8 秒還沒收到任何快照就明確標示逾時，避免又變成無聲無息地卡住
+    setTimeout(() => {
+      if (lastFromCache === null) {
+        console.error('Firestore 監聽逾時：8 秒內未收到任何快照');
+        const el = document.getElementById('buildInfo');
+        if (el) el.innerHTML = `版本 ${BUILD}　|　<span class="bi-warn">❌ Firestore 連線逾時，請重新整理；若持續發生請回報</span>`;
+      }
+    }, 8000);
   } else {
     document.getElementById('loginGate').style.display = 'flex';
     document.getElementById('appRoot').style.display = 'none';
@@ -880,7 +888,7 @@ let calY = new Date().getFullYear(), calM = new Date().getMonth();
 let selDate = today(), selMood = '😊', selColor = '#4a90e2';
 let editId = null, viewId = null;
 let diaryCalY = new Date().getFullYear(), diaryCalM = new Date().getMonth();
-const BUILD = 'v2026-07-27.5';   // 每次部署都會改，用來確認瀏覽器拿到的是不是最新版
+const BUILD = 'v2026-07-27.6';   // 每次部署都會改，用來確認瀏覽器拿到的是不是最新版
 let lastFromCache = null;
 let exerciseData = {};
 let partnerEntries = [];          // 對方的日記，只讀

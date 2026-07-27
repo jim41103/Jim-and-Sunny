@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日記資料遷移工具</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { font-family: -apple-system, 'Noto Sans TC', sans-serif; background: #f0f4f8; color: #1a2332; margin: 0; padding: 24px; }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 6px; }
+  .sub { color: #6b7a8d; font-size: 13px; margin-bottom: 20px; line-height: 1.6; }
+  .card { background: #fff; border-radius: 12px; padding: 20px 22px; box-shadow: 0 4px 18px rgba(26,58,92,0.08); margin-bottom: 16px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #445; }
+  select, input[type=email], input[type=password] {
+    width: 100%; padding: 9px 12px; border: 1.5px solid #e2e8f0; border-radius: 8px;
+    font-size: 14px; margin-bottom: 12px; outline: none;
+  }
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 14px; }
+  button {
+    background: #4a90e2; color: #fff; border: none; border-radius: 8px;
+    padding: 10px 20px; font-size: 14px; font-weight: 500; cursor: pointer;
+  }
+  button:disabled { background: #a0aec0; cursor: not-allowed; }
+  button.secondary { background: #6b7a8d; }
+  .warn { background: #fff8e1; border: 1.5px solid #f0d878; border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #8a6d1c; margin-bottom: 16px; line-height: 1.6; }
+  #log {
+    background: #1a2332; color: #d8e2ec; font-family: 'SF Mono', Menlo, monospace;
+    font-size: 12.5px; border-radius: 10px; padding: 14px 16px; height: 320px;
+    overflow-y: auto; white-space: pre-wrap; line-height: 1.6;
+  }
+  #log .err { color: #ff8a8a; }
+  #log .ok  { color: #7ee0a8; }
+  #log .skip { color: #e0c97e; }
+  .stats { display: flex; gap: 18px; font-size: 13px; color: #445; margin-bottom: 10px; }
+  .stats b { color: #1a3a5c; }
+  #loginBox input { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🛠️ 日記資料遷移工具</h1>
+  <div class="sub">
+    把舊格式的日記（索引 doc 裡直接存 content / photos）拆成「索引 doc」＋「內文 doc」，
+    降低列表載入時的資料量。<br>
+    這是獨立頁面，不會自動執行，需要手動按下按鈕；預設是 <b>dry-run（模擬執行，不寫入）</b>。
+  </div>
+
+  <div id="loginBox" class="card">
+    <label>電子郵件</label>
+    <input type="email" id="loginEmail" autocomplete="username">
+    <label>密碼</label>
+    <input type="password" id="loginPassword" autocomplete="current-password">
+    <button onclick="doLogin()">登入</button>
+    <div id="loginErr" style="color:#d64545;font-size:12.5px;margin-top:8px"></div>
+  </div>
+
+  <div id="mainBox" class="card" style="display:none">
+    <label>要遷移的 collection</label>
+    <select id="colSelect">
+      <option value="diary_wolf">diary_wolf（野狼的日記）</option>
+      <option value="diary_meishan">diary_meishan（美珊的日記）</option>
+    </select>
+
+    <div class="row">
+      <input type="checkbox" id="dryRunChk" checked>
+      <label style="margin:0" for="dryRunChk">Dry-run（只印出會做什麼，不實際寫入 Firestore）</label>
+    </div>
+
+    <div class="warn">
+      ⚠️ 正式執行（取消勾選 dry-run）前，請先用 dry-run 看過一次結果，並確認 Firestore 主控台裡
+      該 collection 已有備份或可接受風險。此工具只處理「索引 doc 仍帶 content 或 photos 欄位」的舊資料，
+      已經拆分過的日記會自動跳過，可以放心重複執行。
+    </div>
+
+    <button onclick="runMigration()" id="runBtn">開始執行</button>
+    <button class="secondary" onclick="clearLog()" style="margin-left:8px">清空紀錄</button>
+
+    <div class="stats" id="statsLine" style="margin-top:16px"></div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+// 與 wolf/index.html、meishan/index.html 用同一個 Firebase 專案
+const firebaseConfig = {
+  apiKey:            "AIzaSyBbuM6QUrC5AyCgIO2nvMIqKuQxdX75RSM",
+  authDomain:        "jim-and-sunny.firebaseapp.com",
+  projectId:         "jim-and-sunny",
+  storageBucket:     "jim-and-sunny.firebasestorage.app",
+  messagingSenderId: "835191986880",
+  appId:             "1:835191986880:web:96d01db0f10928b5862b25"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const auth = firebase.auth();
+
+auth.onAuthStateChanged(user => {
+  document.getElementById('loginBox').style.display = user ? 'none' : '';
+  document.getElementById('mainBox').style.display = user ? '' : 'none';
+});
+
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+  try { await auth.signInWithEmailAndPassword(email, password); }
+  catch (e) { errEl.textContent = '登入失敗，請確認帳號密碼'; }
+}
+
+function logLine(text, cls) {
+  const log = document.getElementById('log');
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = text;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+// ── 縮圖產生（與 wolf/meishan 的 compressImage 邏輯一致：200px / WebP q0.5，超過 90KB 再降品質）──
+function estimateBase64Bytes(dataUrl) {
+  if (!dataUrl) return 0;
+  const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+  return Math.ceil(b64.length * 3 / 4);
+}
+function encodeCanvas(canvas, quality) {
+  const webp = canvas.toDataURL('image/webp', quality);
+  if (webp.indexOf('data:image/webp') === 0) return webp;
+  return canvas.toDataURL('image/jpeg', quality);
+}
+function encodeUnderLimit(canvas, startQuality, maxBytes) {
+  let q = startQuality;
+  let out = encodeCanvas(canvas, q);
+  while (estimateBase64Bytes(out) > maxBytes && q > 0.15) {
+    q = Math.round((q - 0.15) * 100) / 100;
+    out = encodeCanvas(canvas, q);
+  }
+  return out;
+}
+function makeThumbFrom(dataUrl) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 200;
+      let w = img.width, h = img.height;
+      if (w > h && w > MAX) { h = Math.round(h*MAX/w); w = MAX; }
+      else if (h > MAX) { w = Math.round(w*MAX/h); h = MAX; }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(img, 0, 0, w, h);
+      resolve(encodeUnderLimit(c, 0.5, 90 * 1024));
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+async function runMigration() {
+  const col = document.getElementById('colSelect').value;
+  const dryRun = document.getElementById('dryRunChk').checked;
+  const runBtn = document.getElementById('runBtn');
+  runBtn.disabled = true;
+  clearLog();
+  logLine(`開始${dryRun ? '（dry-run，模擬）' : '（正式執行）'}：collection = ${col}`);
+
+  let scanned = 0, migrated = 0, skipped = 0, failed = 0;
+  const updateStats = () => {
+    document.getElementById('statsLine').innerHTML =
+      `掃描 <b>${scanned}</b>　|　遷移 <b>${migrated}</b>　|　跳過（已是新格式）<b>${skipped}</b>　|　失敗 <b>${failed}</b>`;
+  };
+
+  try {
+    const snap = await db.collection(col).get();
+    logLine(`共 ${snap.size} 篇日記索引 doc`);
+    for (const doc of snap.docs) {
+      scanned++;
+      const data = doc.data();
+      const hasOldFields = ('content' in data) || ('photos' in data);
+      if (!hasOldFields) {
+        skipped++;
+        updateStats();
+        continue;
+      }
+      const content = data.content || '';
+      const photos = data.photos || [];
+      let thumb = data.thumb || null;
+      try {
+        if (!thumb && photos.length) thumb = await makeThumbFrom(photos[0]);
+        logLine(`[${doc.id}] ${data.title || '無標題'}（${data.date || '無日期'}）→ 內文 ${photos.length} 張照片，thumb ${thumb ? '已產生' : '無（沒有照片）'}`, 'ok');
+        if (!dryRun) {
+          const batch = db.batch();
+          batch.set(db.collection(col + '_body').doc(doc.id), { content, photos });
+          batch.set(db.collection(col).doc(doc.id), {
+            thumb, photoCount: photos.length,
+            content: firebase.firestore.FieldValue.delete(),
+            photos: firebase.firestore.FieldValue.delete()
+          }, { merge: true });
+          await batch.commit();
+        }
+        migrated++;
+      } catch (e) {
+        failed++;
+        logLine(`[${doc.id}] 失敗：${e.code || e.message}`, 'err');
+      }
+      updateStats();
+    }
+    logLine(dryRun ? 'Dry-run 結束，未寫入任何資料。' : '執行完成。', 'ok');
+  } catch (e) {
+    logLine('讀取 collection 失敗：' + (e.code || e.message), 'err');
+  } finally {
+    runBtn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

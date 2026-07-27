@@ -143,6 +143,7 @@
     }
     .c-mood { font-size: 22px; }
     .c-title { font-family: 'Noto Serif TC', serif; font-size: 16px; font-weight: 600; margin-bottom: 7px; }
+    .c-thumb { width: 100%; max-width: 140px; border-radius: 8px; display: block; margin-bottom: 7px; }
     .c-preview {
       font-size: 13px; color: var(--muted); line-height: 1.6;
       display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
@@ -553,6 +554,9 @@
     <div class="diary-list" id="diaryList">
       <div class="empty-state"><div class="icon">📔</div><p>還沒有日記<br>記錄下在瑞典的第一天吧！</p></div>
     </div>
+    <!-- 分頁用：滑到這裡就觸發載入更早的日記（IntersectionObserver），不掛在 diaryList 裡面避免被 innerHTML 整批覆蓋 -->
+    <div id="diaryListSentinel" style="height:1px"></div>
+    <div id="diaryListMoreStatus" style="text-align:center;font-size:12px;color:var(--muted);padding:4px 0"></div>
     <div id="diaryCal" style="display:none">
       <div class="diary-cal-nav">
         <button class="cal-arrow" onclick="prevDiaryMonth()">‹</button>
@@ -760,11 +764,12 @@ if (typeof firebase === 'undefined') {
 
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
-// 這裡原本開啟離線快取（為了加速換頁）。已移除，原因：
-// 該設定必須在任何其他 Firestore 操作之前完成，而 Safari 的 IndexedDB 會讓它
-// 卡住而不是失敗——.catch 永遠不會被呼叫，後面所有 onSnapshot 全部排在它後面等，
-// 結果是日記、運動紀錄、行事曆全部讀不到，且沒有任何錯誤訊息。
-// 這幾個 collection 都很小（各十幾筆），直接連線讀取的速度差異可以忽略。
+// 【不要重新加回 enablePersistence()】
+// 見 commit a4568d2（2026-07-27）：Safari 的 IndexedDB 會讓該 promise 永久卡住而非
+// reject，所以 .catch 不會被呼叫，後續所有 onSnapshot 全部排隊等待，形成無聲的永久掛起。
+// 症狀是狀態列顯示「尚未連上 Firestore」、資料 0/0/0，且沒有任何錯誤訊息。
+// 降低讀取量的工作已由分頁（limit 20 + startAfter）與索引/內文拆分達成，
+// 不需要離線快取；那點加速不值得整批資料不可見的風險。
 const auth = firebase.auth();
 
 // ── 登入驗證 ──
@@ -883,13 +888,36 @@ let entries = [], events = [];
 let calY = new Date().getFullYear(), calM = new Date().getMonth();
 let selDate = today(), selMood = '😊', selColor = '#4d9fd6';
 let editId = null, viewId = null;
-let selectedPhotos = [];
 let diaryCalY = new Date().getFullYear(), diaryCalM = new Date().getMonth();
 const BUILD = 'v2026-07-27.7';   // 每次部署都會改，用來確認瀏覽器拿到的是不是最新版
 let lastFromCache = null;
 let exerciseData = {};
 let partnerEntries = [];          // 對方的日記，只讀
-const pendingEx = new Set();      // 尚未取得伺服器確認的運動紀錄，key = "日期:人" 
+const pendingEx = new Set();      // 尚未取得伺服器確認的運動紀錄，key = "日期:人"
+let selectedPhotos = []; // [{main, thumb}]，main 存進內文 doc，thumb 存進索引 doc
+
+// ── 日記分頁狀態 ──
+let diaryTopCursor = null;     // 最近 20 篇即時監聽範圍的最後一筆，分頁的起點
+let diaryOlderCursor = null;   // 「載入更早」目前翻到的位置（會持續往後移）
+let diaryNoMoreEntries = false;
+let diaryLoadingMore = false;
+
+// ── 內文 doc 快取：同一次 session 同一篇只讀一次 ──
+// key 格式："<collection>/<id>"，value 為 { content, photos }
+const bodyCache = {};
+async function loadBody(col, id, indexDoc) {
+  const key = col + '/' + id;
+  if (bodyCache[key]) return bodyCache[key];
+  try {
+    const doc = await db.collection(col + '_body').doc(id).get();
+    if (doc.exists) { bodyCache[key] = doc.data(); return bodyCache[key]; }
+  } catch (e) { console.error('內文讀取失敗', e); }
+  // 向後相容：內文 doc 不存在時，代表這篇還沒被 migrate-diary.html 拆分過，
+  // content / photos 仍留在索引 doc 裡。
+  const fallback = { content: indexDoc.content || '', photos: indexDoc.photos || [] };
+  bodyCache[key] = fallback;
+  return fallback;
+}
 
 // ── 時區工具 ──
 function tzOffsetMin(tz, date) {
@@ -936,31 +964,81 @@ function updateDaysCount() {
 }
 
 // ── 照片壓縮 ──
+// 估算 base64 dataURL 對應的原始位元組數（逗號後面才是真正的資料，*3/4 換算回 binary）。
+// 用來擋 Firestore 單一 document 1 MB 上限。
+function estimateBase64Bytes(dataUrl) {
+  if (!dataUrl) return 0;
+  const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+  return Math.ceil(b64.length * 3 / 4);
+}
+// canvas 轉 dataURL：優先輸出 WebP，若瀏覽器不支援 WebP 編碼
+// （toDataURL 只能默默退回 PNG，開頭不會是 data:image/webp），改用 JPEG。
+function encodeCanvas(canvas, quality) {
+  const webp = canvas.toDataURL('image/webp', quality);
+  if (webp.indexOf('data:image/webp') === 0) return webp;
+  return canvas.toDataURL('image/jpeg', quality);
+}
+function drawResized(img, maxSize) {
+  let w = img.width, h = img.height;
+  if (w > h && w > maxSize) { h = Math.round(h*maxSize/w); w = maxSize; }
+  else if (h > maxSize) { w = Math.round(w*maxSize/h); h = maxSize; }
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  c.getContext('2d').drawImage(img, 0, 0, w, h);
+  return c;
+}
+// 重複降低品質直到低於位元組上限，避免單張縮圖就撐爆索引 doc 的 100 KB 上限。
+function encodeUnderLimit(canvas, startQuality, maxBytes) {
+  let q = startQuality;
+  let out = encodeCanvas(canvas, q);
+  while (estimateBase64Bytes(out) > maxBytes && q > 0.15) {
+    q = Math.round((q - 0.15) * 100) / 100;
+    out = encodeCanvas(canvas, q);
+  }
+  return out;
+}
+// 回傳 { main, thumb }：main 給內文 doc 存放的主圖（1000px / WebP q0.6），
+// thumb 給索引 doc 的列表縮圖（200px / WebP q0.5，並確保單張在 90KB 內）。
 function compressImage(file) {
   return new Promise(resolve => {
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        const MAX = 1100;
-        let w = img.width, h = img.height;
-        if (w > h && w > MAX) { h = Math.round(h*MAX/w); w = MAX; }
-        else if (h > MAX) { w = Math.round(w*MAX/h); h = MAX; }
-        const c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        c.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(c.toDataURL('image/jpeg', 0.72));
+        const main  = encodeCanvas(drawResized(img, 1000), 0.6);
+        const thumb = encodeUnderLimit(drawResized(img, 200), 0.5, 90 * 1024);
+        resolve({ main, thumb });
       };
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   });
 }
+// 內文 doc 超過 800KB 上限時，把既有主圖再壓縮一次（降低品質，不改尺寸）。
+function recompressDataUrl(dataUrl, quality) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      c.getContext('2d').drawImage(img, 0, 0);
+      resolve(encodeCanvas(c, quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+function bodySizeBytes(content, photos) {
+  let total = new Blob([content || '']).size;
+  (photos || []).forEach(p => { total += estimateBase64Bytes(p); });
+  return total;
+}
 function renderPhotoPreview() {
   const el = document.getElementById('photoPreview');
-  el.innerHTML = selectedPhotos.map((src, i) => `
+  // 預覽一律用縮圖（thumb）顯示，載入比主圖快；selectedPhotos 存的是 {main, thumb}
+  el.innerHTML = selectedPhotos.map((p, i) => `
     <div class="photo-thumb">
-      <img src="${src}">
+      <img src="${p.thumb || p.main}">
       <button class="rm-btn" onclick="removePhoto(${i})">✕</button>
     </div>`).join('');
 }
@@ -989,15 +1067,18 @@ function today() {
 }
 
 // ── 匯出成 Markdown（給 Obsidian 用的備份）──
+// 匯出只涵蓋目前已載入（記憶體中）的日記，索引拆分後 content/photos 要另外讀內文 doc；
+// 篇數多時會逐篇打 Firestore，故用 for...of 依序讀取，避免一次打開太多平行請求
 async function exportMarkdown() {
   if (!entries.length) { alert('目前沒有日記可以匯出'); return; }
   const zip = new JSZip();
   const root = zip.folder(`diary-${PERSON}-${today()}`);
   const assets = root.folder('assets');
-  entries.forEach(e => {
+  for (const e of entries) {
+    const body = await loadBody(COL, e.id, e);
     const slug = (e.title || '無標題').replace(/[\\/:*?"<>|]/g, '').slice(0, 30);
     let photoMd = '';
-    (e.photos || []).forEach((src, i) => {
+    (body.photos || []).forEach((src, i) => {
       const m = /^data:image\/(\w+);base64,(.+)$/.exec(src);
       if (!m) return;
       const fname = `${e.id}-${i + 1}.${m[1]}`;
@@ -1012,8 +1093,8 @@ async function exportMarkdown() {
       '---',
       ''
     ].join('\n');
-    root.file(`${e.date || 'no-date'}-${slug || 'entry'}.md`, front + '\n' + (e.content || '') + '\n' + photoMd);
-  });
+    root.file(`${e.date || 'no-date'}-${slug || 'entry'}.md`, front + '\n' + (body.content || '') + '\n' + photoMd);
+  }
   const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1031,12 +1112,17 @@ function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// 日記篇數會累積到 1,400+ 篇，全量 onSnapshot 會撞 Firestore 免費方案的流量上限，
+// 所以只即時監聽「最近 20 篇」，更早的日記改用一次性 .get() 分頁載入（見 loadMoreEntries）。
 function initDB() {
-  // 不用 Firestore 的 orderBy：缺少 date 欄位的日記會被 orderBy 靜默排除，
-  // 改成全量取回後在前端排序，任何一篇都不會消失。
-  db.collection(COL)
+  db.collection(COL).orderBy('date', 'desc').limit(20)
     .onSnapshot(snap => {
-      entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const recent = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (snap.docs.length) diaryTopCursor = snap.docs[snap.docs.length - 1];
+      // 保留先前用「載入更早」讀進來、不在最近 20 篇範圍內的舊資料
+      const recentIds = new Set(recent.map(e => e.id));
+      const older = entries.filter(e => e._older && !recentIds.has(e.id));
+      entries = [...recent, ...older];
       entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
       renderList(document.getElementById('searchInput').value);
       renderDiaryCal(); updateBuildInfo();
@@ -1044,25 +1130,24 @@ function initDB() {
       console.error('日記載入失敗', err);
       alert('日記載入失敗（' + err.code + '），請重新整理或確認登入狀態');
     });
-  db.collection('calendar_events')
-    .onSnapshot(snap => {
-      events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      events.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
-      renderCal(); renderEvents(selDate);
-    }, err => {
-      console.error('行事曆載入失敗', err);
-      alert('行事曆載入失敗（' + err.code + '）');
-    });
-  // 對方的日記：只讀，用來在自己的月曆上顯示對方那天有沒有寫
-  db.collection(PARTNER_COL)
+  // 共同行事曆：只監聽目前顯示月份的範圍，切換月份時在 prevMonth/nextMonth 裡重新訂閱
+  subscribeEventsForMonth(calY, calM);
+  // 對方的日記：只讀，只監聽最近 20 篇，用來在自己的月曆上顯示對方那天有沒有寫；
+  // 超過 20 篇之後的舊資料不再監聽，避免對方那 1,000+ 篇也全部即時同步。
+  db.collection(PARTNER_COL).orderBy('date', 'desc').limit(20)
     .onSnapshot(snap => {
       partnerEntries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderDiaryCal(); updateBuildInfo();
     }, err => {
       console.error('對方日記載入失敗', err);
     });
+  // 只監聽最近 60 天的運動紀錄；exercise 的 document ID 本身就是 YYYY-MM-DD，
+  // 用 documentId() 做範圍查詢即可，不需要額外的 date 欄位。
   // includeMetadataChanges：才能從 metadata.fromCache 判斷資料是否還沒同步到雲端
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 60);
+  const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;
   db.collection('exercise')
+    .where(firebase.firestore.FieldPath.documentId(), '>=', cutoffStr)
     .onSnapshot({ includeMetadataChanges: true }, snap => {
       exerciseData = {};
       snap.docs.forEach(d => { exerciseData[d.id] = d.data(); });
@@ -1076,6 +1161,58 @@ function initDB() {
   loadQA();
 }
 
+// 共同行事曆：只 where('date') 落在該月份範圍內，切月份時取消舊訂閱重新訂閱
+let eventsUnsub = null;
+function subscribeEventsForMonth(y, m) {
+  if (eventsUnsub) { eventsUnsub(); eventsUnsub = null; }
+  const first = `${y}-${String(m+1).padStart(2,'0')}-01`;
+  const lastDay = new Date(y, m+1, 0).getDate();
+  const last = `${y}-${String(m+1).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+  eventsUnsub = db.collection('calendar_events')
+    .where('date', '>=', first).where('date', '<=', last)
+    .onSnapshot(snap => {
+      events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      events.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+      renderCal(); renderEvents(selDate);
+    }, err => {
+      console.error('行事曆載入失敗', err);
+      alert('行事曆載入失敗（' + err.code + '）');
+    });
+}
+
+// 滑到列表底部時載入更早的日記（一次性 .get()，不掛 onSnapshot listener）
+async function loadMoreEntries() {
+  if (diaryNoMoreEntries || diaryLoadingMore) return;
+  const cursor = diaryOlderCursor || diaryTopCursor;
+  if (!cursor) return;
+  diaryLoadingMore = true;
+  updateLoadMoreUI();
+  try {
+    const snap = await db.collection(COL).orderBy('date', 'desc').startAfter(cursor).limit(20).get();
+    if (snap.empty) {
+      diaryNoMoreEntries = true;
+    } else {
+      diaryOlderCursor = snap.docs[snap.docs.length - 1];
+      const existingIds = new Set(entries.map(e => e.id));
+      const older = snap.docs
+        .map(d => ({ id: d.id, ...d.data(), _older: true }))
+        .filter(e => !existingIds.has(e.id));
+      entries = [...entries, ...older];
+      entries.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+      if (snap.docs.length < 20) diaryNoMoreEntries = true;
+      renderList(document.getElementById('searchInput').value);
+      renderDiaryCal();
+    }
+  } catch (e) {
+    console.error('載入更早日記失敗', e);
+  } finally {
+    diaryLoadingMore = false;
+    updateLoadMoreUI();
+  }
+}
+
+// 拆分後索引 doc 不再存 content，只能搜尋標題／日期；
+// 若是尚未遷移的舊資料（索引 doc 仍帶 content），一併納入全文搜尋範圍。
 function renderList(q = '') {
   const term = q.toLowerCase().trim();
   const list = term
@@ -1088,17 +1225,35 @@ function renderList(q = '') {
   const el = document.getElementById('diaryList');
   if (!list.length) {
     el.innerHTML = `<div class="empty-state"><div class="icon">${term?'🔍':'📔'}</div><p>${term?'找不到符合的日記':'還沒有日記<br>記錄下在瑞典的第一天吧！'}</p></div>`;
+    updateLoadMoreUI();
     return;
   }
-  el.innerHTML = list.map(e => `
+  // c-preview 改用「舊資料的 content 摘要」或「照片張數」；
+  // 索引 doc 拆分後沒有 content，避免顯示空白就乾脆換成有意義的提示。
+  el.innerHTML = list.map(e => {
+    const thumb = e.thumb || (e.photos && e.photos[0]) || '';
+    const previewText = e.content ? esc(e.content) : (e.photoCount ? `📷 ${e.photoCount} 張照片` : '');
+    return `
     <div class="diary-card" onclick="viewEntry('${e.id}')">
       <div class="c-head">
         <span class="c-date">${fmtDate(e.date)}</span>
         <span class="c-mood">${e.mood||'📔'}</span>
       </div>
       <div class="c-title">${esc(e.title||'無標題')}</div>
-      <div class="c-preview">${esc(e.content||'')}</div>
-    </div>`).join('');
+      ${thumb ? `<img src="${thumb}" class="c-thumb" alt="">` : ''}
+      <div class="c-preview">${previewText}</div>
+    </div>`;
+  }).join('');
+  updateLoadMoreUI();
+}
+
+// ── 分頁：載入更早的日記 ──
+function updateLoadMoreUI() {
+  const statusEl = document.getElementById('diaryListMoreStatus');
+  if (!statusEl) return;
+  if (diaryNoMoreEntries) statusEl.textContent = entries.length ? '已載入全部日記' : '';
+  else if (diaryLoadingMore) statusEl.textContent = '載入中...';
+  else statusEl.textContent = '';
 }
 
 // ── 日記月曆檢視 ──
@@ -1211,34 +1366,70 @@ function pickMood(el) {
   el.classList.add('sel'); selMood = el.dataset.mood;
 }
 
+// 每篇日記拆成「索引 doc」（COL，列表/月曆用的輕量欄位）與
+// 「內文 doc」（COL+'_body'，content 與主圖 photos），兩者 document ID 相同。
 async function saveEntry() {
   const t = document.getElementById('eTitle').value.trim();
   const d = document.getElementById('eDate').value;
   const c = document.getElementById('eContent').value.trim();
   if (!t && !c) { alert('請填寫標題或內容'); return; }
-  const data = { title: t||'無標題', date: d, content: c, mood: selMood, photos: selectedPhotos, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+
+  let photos = selectedPhotos.map(p => p.main);
+  let bytes = bodySizeBytes(c, photos);
+  // 超過 800KB 上限先自動再壓一次；還是超過就擋下，請使用者自行減少照片
+  if (bytes > 800 * 1024 && photos.length) {
+    photos = await Promise.all(photos.map(src => recompressDataUrl(src, 0.35)));
+    bytes = bodySizeBytes(c, photos);
+  }
+  if (bytes > 800 * 1024) {
+    alert(`這篇日記含照片後的資料量約 ${Math.round(bytes/1024)} KB，超過 800 KB 上限（Firestore 單一文件上限 1MB）。\n請減少照片數量後再儲存。`);
+    return;
+  }
+
+  const thumb = selectedPhotos.length ? selectedPhotos[0].thumb : null;
+  const indexData = {
+    title: t || '無標題', date: d, mood: selMood,
+    thumb, photoCount: photos.length,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  const bodyData = { content: c, photos };
+
   try {
-    if (editId) { await db.collection(COL).doc(editId).update(data); }
-    else { data.createdAt = firebase.firestore.FieldValue.serverTimestamp(); await db.collection(COL).add(data); }
+    if (editId) {
+      const batch = db.batch();
+      batch.update(db.collection(COL).doc(editId), indexData);
+      batch.set(db.collection(COL + '_body').doc(editId), bodyData);
+      await batch.commit();
+      delete bodyCache[COL + '/' + editId];
+    } else {
+      const ref = db.collection(COL).doc(); // 先產生 ID，讓索引與內文 doc 共用同一個 ID
+      indexData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      const batch = db.batch();
+      batch.set(ref, indexData);
+      batch.set(db.collection(COL + '_body').doc(ref.id), bodyData);
+      await batch.commit();
+    }
     closeModal('entryModal'); closeModal('viewModal');
   } catch(e) { console.error(e); alert('儲存失敗，請確認 Firebase 設定'); }
 }
 
-function viewEntry(id) {
+async function viewEntry(id) {
   const e = entries.find(x => x.id === id); if (!e) return;
   viewId = id;
   document.getElementById('vDelBtn').style.display = '';
   document.getElementById('vEditBtn').style.display = '';
-  fillViewModal(e, e.title||'無標題');
+  const body = await loadBody(COL, id, e);
+  fillViewModal({ ...e, ...body }, e.title||'無標題');
 }
 
 // 對方的日記：只能看，不能改也不能刪
-function viewPartnerEntry(id) {
+async function viewPartnerEntry(id) {
   const e = partnerEntries.find(x => x.id === id); if (!e) return;
   viewId = null;
   document.getElementById('vDelBtn').style.display = 'none';
   document.getElementById('vEditBtn').style.display = 'none';
-  fillViewModal(e, PARTNER_ICON + ' ' + (e.title||'無標題'));
+  const body = await loadBody(PARTNER_COL, id, e);
+  fillViewModal({ ...e, ...body }, PARTNER_ICON + ' ' + (e.title||'無標題'));
 }
 
 function fillViewModal(e, titleText) {
@@ -1253,14 +1444,16 @@ function fillViewModal(e, titleText) {
   openModal('viewModal');
 }
 
-function editEntry() {
+async function editEntry() {
   const e = entries.find(x => x.id === viewId); if (!e) return;
   editId = viewId; closeModal('viewModal');
-  selectedPhotos = [...(e.photos||[])];
+  const body = await loadBody(COL, editId, e);
+  // 舊資料沒有另存縮圖，編輯時的預覽退回用主圖本身當縮圖顯示
+  selectedPhotos = (body.photos||[]).map(src => ({ main: src, thumb: src }));
   document.getElementById('entryModalTitle').textContent = '編輯日記';
   document.getElementById('eTitle').value = e.title||'';
   document.getElementById('eDate').value = e.date||'';
-  document.getElementById('eContent').value = e.content||'';
+  document.getElementById('eContent').value = body.content||'';
   document.getElementById('ePhotos').value = '';
   renderPhotoPreview();
   document.querySelectorAll('.mood-opt').forEach(el => el.classList.toggle('sel', el.dataset.mood === e.mood));
@@ -1270,7 +1463,14 @@ function editEntry() {
 
 async function deleteEntry() {
   if (!viewId || !confirm('確定要刪除這篇日記嗎？')) return;
-  try { await db.collection(COL).doc(viewId).delete(); closeModal('viewModal'); }
+  try {
+    const batch = db.batch();
+    batch.delete(db.collection(COL).doc(viewId));
+    batch.delete(db.collection(COL + '_body').doc(viewId));
+    await batch.commit();
+    delete bodyCache[COL + '/' + viewId];
+    closeModal('viewModal');
+  }
   catch(e) { alert('刪除失敗'); }
 }
 
@@ -1319,8 +1519,9 @@ function renderCal() {
 }
 
 function pickDate(ds) { selDate = ds; renderCal(); renderEvents(ds); }
-function prevMonth() { calM--; if (calM<0){calM=11;calY--;} renderCal(); }
-function nextMonth() { calM++; if (calM>11){calM=0;calY++;} renderCal(); }
+// 切換月份要重新訂閱 calendar_events（只監聽當月範圍），舊訂閱在 subscribeEventsForMonth 裡會先取消
+function prevMonth() { calM--; if (calM<0){calM=11;calY--;} renderCal(); subscribeEventsForMonth(calY, calM); }
+function nextMonth() { calM++; if (calM>11){calM=0;calY++;} renderCal(); subscribeEventsForMonth(calY, calM); }
 
 function renderEvents(ds) {
   const ev = [...events.filter(e => e.date === ds), ...gcalEvents.filter(e => e.date === ds)]
@@ -1440,12 +1641,22 @@ document.addEventListener('DOMContentLoaded', () => {
   loadColorLabels();
   document.getElementById('ePhotos').addEventListener('change', async (e) => {
     for (const file of Array.from(e.target.files)) {
-      selectedPhotos.push(await compressImage(file));
+      selectedPhotos.push(await compressImage(file)); // {main, thumb}
     }
     e.target.value = '';
     renderPhotoPreview();
   });
   document.getElementById('evDate').addEventListener('change', updateConvertedTime);
+  // 滑到列表底部（sentinel 進入可視範圍）就載入更早的日記，只在列表檢視模式下生效
+  const sentinel = document.getElementById('diaryListSentinel');
+  if (sentinel && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver(ents => {
+      if (ents[0].isIntersecting && document.getElementById('diaryList').style.display !== 'none') {
+        loadMoreEntries();
+      }
+    }, { rootMargin: '200px' });
+    io.observe(sentinel);
+  }
 });
 </script>
 </body>

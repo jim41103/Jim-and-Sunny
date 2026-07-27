@@ -1,0 +1,69 @@
+rules_version = '2';
+
+// 美珊與野狼碩班之旅 —— Firestore 安全性規則
+//
+// 設計前提：使用者固定就是兩人，帳號不會增加。
+// 因此直接把 UID 寫死，不依賴 Console 的「停用自行註冊」設定，
+// 避免哪天那個開關被改掉就整本日記外洩。
+//
+// 部署方式：Firebase Console → Firestore Database → 規則 → 貼上 → 發布
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 兩人的 Firebase Auth UID（2026-07-27 填入，與 Console 上的規則一致）
+    // 取得方式：Firebase Console → Authentication → Users → 「使用者 UID」欄
+    // 注意：這裡要放 UID（28 字元亂碼），不是 email。填 email 會導致全部人被鎖在外面。
+    function wolfUid()    { return 'sBEUxRxfgfahXNudXinMrUkrMZq1'; }
+    function meishanUid() { return '8G68340QncPwaJvirEkbcxYdH7F3'; }
+
+    // 是否為這兩人之一（擋掉任何自行註冊的陌生帳號）
+    // 註：刻意用 == / || 而非 `uid in [...]`。兩者都應該合法，
+    // 但 == 與 || 是官方文件明載的基本運算子，不留任何語法疑慮。
+    function isMember() {
+      return request.auth != null
+          && (request.auth.uid == wolfUid() || request.auth.uid == meishanUid());
+    }
+
+    function isWolf()    { return request.auth != null && request.auth.uid == wolfUid(); }
+    function isMeishan() { return request.auth != null && request.auth.uid == meishanUid(); }
+
+    // ---- 日記：兩人都能讀，但只能寫自己的 ----
+    // _body 是階段 2 拆出來的內文 collection，權限與索引一致
+    match /diary_wolf/{docId} {
+      allow read:  if isMember();
+      allow write: if isWolf();
+    }
+    match /diary_wolf_body/{docId} {
+      allow read:  if isMember();
+      allow write: if isWolf();
+    }
+    match /diary_meishan/{docId} {
+      allow read:  if isMember();
+      allow write: if isMeishan();
+    }
+    match /diary_meishan_body/{docId} {
+      allow read:  if isMember();
+      allow write: if isMeishan();
+    }
+
+    // ---- 共用資料：兩人都能讀寫 ----
+    match /calendar_events/{docId} {
+      allow read, write: if isMember();
+    }
+    match /exercise/{docId} {
+      allow read, write: if isMember();
+    }
+    match /daily_qa/{docId} {
+      allow read, write: if isMember();
+    }
+
+    // ---- 意圖聲明（非實際保護）----
+    // 注意：Firestore 多個 match 是 OR 邏輯，這段 `if false` 不會覆蓋上面的允許，
+    // 對未定義的 collection 也沒有新增保護——Firestore 本來就是預設拒絕。
+    // 留著純粹是提醒：新增 collection 時必須回來上面補規則，否則讀寫會失敗。
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

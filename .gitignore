@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+._*
+
+# 編輯器
+.vscode/
+.idea/
+
+# 本機測試產物
+.playwright-mcp/

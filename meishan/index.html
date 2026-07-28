@@ -6,8 +6,20 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>🌸 美珊的日記</title>
+  <title>☀️ 美珊的日記</title>
+  <meta name="description" content="2026 · Taipei · National Taiwan University">
+  <meta name="theme-color" content="#1a4a72">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E☀️%3C/text%3E%3C/svg%3E">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="☀️ 美珊的日記">
+  <meta property="og:description" content="2026 · Taipei · National Taiwan University">
+  <meta property="og:url" content="https://jim41103.github.io/Jim-and-Sunny/meishan/index.html">
+  <meta property="og:image" content="https://jim41103.github.io/Jim-and-Sunny/assets/background.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -421,12 +433,14 @@
       }
       .h-left { gap: 8px; }
       .h-title { font-size: 16px; letter-spacing: 0; }
+      /* 6 顆平均分成上下各 3 顆，避免 flex-wrap 依寬度折成 4+2 或 5+1 */
       .h-right {
         width: 100%;
-        flex-wrap: wrap;
-        justify-content: center;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 6px;
       }
+      .h-right > * { justify-content: center; text-align: center; min-width: 0; }
       .weather-pill, .clock-pill { padding: 4px 10px; font-size: 12px; gap: 4px; }
       .nav-btn { padding: 5px 11px; font-size: 12px; }
       .clock-pill .clock-city { display: none; }   /* 窄螢幕省掉「台北／斯德哥爾摩」字樣 */
@@ -494,7 +508,7 @@
 <!-- ── Login Gate ── -->
 <div class="login-gate" id="loginGate" style="display:none">
   <div class="login-box">
-    <div class="login-icon">🌸</div>
+    <div class="login-icon">☀️</div>
     <div class="login-title">美珊的日記</div>
     <div class="login-sub">請登入以繼續</div>
     <form id="loginForm">
@@ -565,7 +579,7 @@
         <button class="diary-cal-today-btn" onclick="gotoDiaryToday()">今天</button>
       </div>
       <div class="diary-cal-grid" id="diaryCalGrid"></div>
-      <div class="diary-cal-legend">🐺／🌸 點擊圖示標記當天有沒有運動，各自只能標記自己的狀態<br>
+      <div class="diary-cal-legend">🐺／☀️ 點擊圖示標記當天有沒有運動，各自只能標記自己的狀態<br>
         <span style="color:#4a90e2">●</span> 野狼的日記　<span style="color:#e8799f">●</span> 美珊的日記　每篇一個點，點小點可直接開啟</div>
     </div>
   </div>
@@ -1327,7 +1341,7 @@ function renderDiaryCal() {
         <div class="diary-cal-dots">${dots}</div>
         <div class="diary-cal-ex">
           <span class="${wolfCls}" ${wolfClick} title="野狼運動">🐺</span>
-          <span class="${meishanCls}" ${meishanClick} title="美珊運動">🌸</span>
+          <span class="${meishanCls}" ${meishanClick} title="美珊運動">☀️</span>
         </div>
       </div>`;
   }
